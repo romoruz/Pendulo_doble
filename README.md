@@ -22,9 +22,3 @@ El proyecto aborda el sistema desde una perspectiva analítica y computacional:
 - `simulator.py`: Aplicación interactiva con interfaz gráfica para la exploración de parámetros en tiempo real.
 - `retratos_fase.py`: Script para la generación de gráficas de alta resolución y análisis de estabilidad.
 - `main.pdf`: Documento técnico con la deducción analítica completa y discusión de resultados.
-
-## Instrucciones de uso
-
-Para ejecutar el simulador interactivo:
-```bash
-python simulator.py
