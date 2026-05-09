@@ -1,2 +1,4 @@
-# Pendulo_doble
-Proyecto final de mi materia de Sistemas Dinámicos II
+# Pendulo doble
+Este proyecto implementa el análisis dinámico y la simulación numérica del péndulo doble, centrándose en la transición de regímenes regulares hacia el caos determinista. Desarrollado para la asignatura de Sistemas Dinámicos II (ITAM).Características principalesModelado físico: Ecuaciones de movimiento derivadas mediante el formalismo Lagrangiano.Métodos numéricos: Integración vía Runge-Kutta de 4to orden (clásico y variante 3/8 de Kutta).Análisis topológico: Generación de retratos de fase en el espacio $\mathbb{T}^2 \times \mathbb{R}^2$.Reducción dimensional: Implementación de Secciones de Poincaré para la identificación de toros KAM.Tecnologías utilizadasPython 3.x (NumPy, Matplotlib)LaTeX (Documentación técnica y formalismo matemático)Estructurasimulator.py: Simulador interactivo con interfaz gráfica (Widgets de Matplotlib).analysis_plots.py: Script para la generación de gráficas de alta resolución para el reporte.main.pdf: Informe detallado con la deducción analítica y el análisis de resultados.EjecuciónPara iniciar el simulador interactivo:Bashpython simulator.py
+Para generar las gráficas de análisis:Bashpython analysis_plots.py
+AutorRodrigo Moreno CruzMatemáticas Aplicadas, ITAM.
