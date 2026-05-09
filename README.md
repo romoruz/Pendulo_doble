@@ -1,4 +1,30 @@
-# Pendulo doble
-Este proyecto implementa el análisis dinámico y la simulación numérica del péndulo doble, centrándose en la transición de regímenes regulares hacia el caos determinista. Desarrollado para la asignatura de Sistemas Dinámicos II (ITAM).Características principalesModelado físico: Ecuaciones de movimiento derivadas mediante el formalismo Lagrangiano.Métodos numéricos: Integración vía Runge-Kutta de 4to orden (clásico y variante 3/8 de Kutta).Análisis topológico: Generación de retratos de fase en el espacio $\mathbb{T}^2 \times \mathbb{R}^2$.Reducción dimensional: Implementación de Secciones de Poincaré para la identificación de toros KAM.Tecnologías utilizadasPython 3.x (NumPy, Matplotlib)LaTeX (Documentación técnica y formalismo matemático)Estructurasimulator.py: Simulador interactivo con interfaz gráfica (Widgets de Matplotlib).analysis_plots.py: Script para la generación de gráficas de alta resolución para el reporte.main.pdf: Informe detallado con la deducción analítica y el análisis de resultados.EjecuciónPara iniciar el simulador interactivo:Bashpython simulator.py
-Para generar las gráficas de análisis:Bashpython analysis_plots.py
-AutorRodrigo Moreno CruzMatemáticas Aplicadas, ITAM.
+# Péndulo doble
+
+Este repositorio contiene la implementación del análisis dinámico y la simulación numérica del péndulo doble, con énfasis en el estudio de sistemas hamiltonianos y la transición hacia el caos determinista. Proyecto desarrollado para la asignatura de Sistemas Dinámicos II en el ITAM.
+
+## Descripción técnica
+
+El proyecto aborda el sistema desde una perspectiva analítica y computacional:
+
+1. Modelado Físico: Derivación de las ecuaciones de Euler-Lagrange y formulación del campo vectorial en el espacio de fases tetradimensional.
+2. Métodos Numéricos: Implementación de algoritmos Runge-Kutta de cuarto orden (clásico y variante 3/8 de Kutta) para la integración de las EDOs.
+3. Análisis Topológico: Visualización de retratos de fase en la variedad cilíndrica del espacio de fases.
+4. Reducción Dimensional: Construcción de Secciones de Poincaré para identificar la ruptura de toros KAM y la emergencia de enredos homoclínicos.
+
+## Requisitos
+
+- Python 3.x
+- NumPy
+- Matplotlib
+
+## Estructura del repositorio
+
+- `simulator.py`: Aplicación interactiva con interfaz gráfica para la exploración de parámetros en tiempo real.
+- `analysis_plots.py`: Script para la generación de gráficas de alta resolución y análisis de estabilidad.
+- `main.pdf`: Documento técnico con la deducción analítica completa y discusión de resultados.
+
+## Instrucciones de uso
+
+Para ejecutar el simulador interactivo:
+```bash
+python simulator.py
