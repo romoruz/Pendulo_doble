@@ -206,6 +206,20 @@
     }
 
     /**
+     * Conteo canónico de cruces por la vertical superior para la masa 2 (flips / pasos por arriba).
+     * Según ROADMAP.md y flips.py:
+     * k(t) = floor((theta2 + pi) / (2*pi))
+     * Cruces acumulados: suma de |Delta k| entre pasos consecutivos.
+     * Si crucesPrevios es provisto, acumula; de lo contrario retorna el incremento |Delta k|.
+     */
+    function contarCruces(th2Ant, th2Nuevo, crucesPrevios) {
+        var kAnt = Math.floor((th2Ant + Math.PI) / (2.0 * Math.PI));
+        var kNuevo = Math.floor((th2Nuevo + Math.PI) / (2.0 * Math.PI));
+        var delta = Math.abs(kNuevo - kAnt);
+        return (crucesPrevios !== undefined && crucesPrevios !== null) ? (crucesPrevios + delta) : delta;
+    }
+
+    /**
      * Posiciones cartesianas de los dos extremos (x1, y1) y (x2, y2)
      * En coordenadas físicas (y hacia arriba, x hacia la derecha).
      */
@@ -441,6 +455,7 @@
         energiaTotal: energiaTotal,
         umbralesEnergia: umbralesEnergia,
         indiceVuelta: indiceVuelta,
+        contarCruces: contarCruces,
         posicionesCartesianas: posicionesCartesianas,
         linealizacion: linealizacion,
         pasoLinealRK4: pasoLinealRK4,

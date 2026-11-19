@@ -480,14 +480,16 @@
         estado.x = pasoFunc(estado.x, dtEfectivo, estado.params);
         estado.t += dtEfectivo;
 
-        // Vueltas continuas
+        // Vueltas continuas y conteo acumulativo de cruces (ROADMAP.md y flips.py)
         var dTh2 = estado.x[1] - xAnt[1];
+        var th2Ant = estado.theta2Continuo;
         estado.theta2Continuo += dTh2;
-        estado.vueltasM2 = PenduloFisica.indiceVuelta(estado.theta2Continuo);
+        estado.vueltasM2 = PenduloFisica.contarCruces(th2Ant, estado.theta2Continuo, estado.vueltasM2);
 
         var dTh1 = estado.x[0] - xAnt[0];
+        var th1Ant = estado.theta1Continuo;
         estado.theta1Continuo += dTh1;
-        estado.vueltasM1 = PenduloFisica.indiceVuelta(estado.theta1Continuo);
+        estado.vueltasM1 = PenduloFisica.contarCruces(th1Ant, estado.theta1Continuo, estado.vueltasM1);
 
         // Integrar modelo lineal si está activo o en historial
         if (!estado.linInfo) {
@@ -593,10 +595,10 @@
                 var xNextL = pasoFunc(xAntL, dtStep, p);
                 estado.mc.left.pendulos[i] = xNextL;
 
-                var dTh2L = xNextL[1] - xAntL[1];
-                estado.mc.left.th2Continuo[i] += dTh2L;
-                var kL = Math.abs(PenduloFisica.indiceVuelta(estado.mc.left.th2Continuo[i]));
-                if (kL > estado.mc.left.flips[i]) estado.mc.left.flips[i] = kL;
+                var thAntL = estado.mc.left.th2Continuo[i];
+                var thNextL = thAntL + (xNextL[1] - xAntL[1]);
+                estado.mc.left.flips[i] = PenduloFisica.contarCruces(thAntL, thNextL, estado.mc.left.flips[i]);
+                estado.mc.left.th2Continuo[i] = thNextL;
             }
 
             // Avanzar derecha
@@ -605,10 +607,10 @@
                 var xNextR = pasoFunc(xAntR, dtStep, p);
                 estado.mc.right.pendulos[j] = xNextR;
 
-                var dTh2R = xNextR[1] - xAntR[1];
-                estado.mc.right.th2Continuo[j] += dTh2R;
-                var kR = Math.abs(PenduloFisica.indiceVuelta(estado.mc.right.th2Continuo[j]));
-                if (kR > estado.mc.right.flips[j]) estado.mc.right.flips[j] = kR;
+                var thAntR = estado.mc.right.th2Continuo[j];
+                var thNextR = thAntR + (xNextR[1] - xAntR[1]);
+                estado.mc.right.flips[j] = PenduloFisica.contarCruces(thAntR, thNextR, estado.mc.right.flips[j]);
+                estado.mc.right.th2Continuo[j] = thNextR;
             }
 
             estado.mc.t += dtStep;
@@ -670,22 +672,15 @@
         }
     }
 
-    function turboColormap(t) {
-        // Colormap perceptual suave estilo Turbo
+    var INFERNO_FLAT = new Uint8Array([0, 0, 4, 1, 0, 5, 1, 1, 6, 1, 1, 8, 2, 1, 10, 2, 2, 12, 2, 2, 14, 3, 2, 16, 4, 3, 18, 4, 3, 20, 5, 4, 23, 6, 4, 25, 7, 5, 27, 8, 5, 29, 9, 6, 31, 10, 7, 34, 11, 7, 36, 12, 8, 38, 13, 8, 41, 14, 9, 43, 16, 9, 45, 17, 10, 48, 18, 10, 50, 20, 11, 52, 21, 11, 55, 22, 11, 57, 24, 12, 60, 25, 12, 62, 27, 12, 65, 28, 12, 67, 30, 12, 69, 31, 12, 72, 33, 12, 74, 35, 12, 76, 36, 12, 79, 38, 12, 81, 40, 11, 83, 41, 11, 85, 43, 11, 87, 45, 11, 89, 47, 10, 91, 49, 10, 92, 50, 10, 94, 52, 10, 95, 54, 9, 97, 56, 9, 98, 57, 9, 99, 59, 9, 100, 61, 9, 101, 62, 9, 102, 64, 10, 103, 66, 10, 104, 68, 10, 104, 69, 10, 105, 71, 11, 106, 73, 11, 106, 74, 12, 107, 76, 12, 107, 77, 13, 108, 79, 13, 108, 81, 14, 108, 82, 14, 109, 84, 15, 109, 85, 15, 109, 87, 16, 110, 89, 16, 110, 90, 17, 110, 92, 18, 110, 93, 18, 110, 95, 19, 110, 97, 19, 110, 98, 20, 110, 100, 21, 110, 101, 21, 110, 103, 22, 110, 105, 22, 110, 106, 23, 110, 108, 24, 110, 109, 24, 110, 111, 25, 110, 113, 25, 110, 114, 26, 110, 116, 26, 110, 117, 27, 110, 119, 28, 109, 120, 28, 109, 122, 29, 109, 124, 29, 109, 125, 30, 109, 127, 30, 108, 128, 31, 108, 130, 32, 108, 132, 32, 107, 133, 33, 107, 135, 33, 107, 136, 34, 106, 138, 34, 106, 140, 35, 105, 141, 35, 105, 143, 36, 105, 144, 37, 104, 146, 37, 104, 147, 38, 103, 149, 38, 103, 151, 39, 102, 152, 39, 102, 154, 40, 101, 155, 41, 100, 157, 41, 100, 159, 42, 99, 160, 42, 99, 162, 43, 98, 163, 44, 97, 165, 44, 96, 166, 45, 96, 168, 46, 95, 169, 46, 94, 171, 47, 94, 173, 48, 93, 174, 48, 92, 176, 49, 91, 177, 50, 90, 179, 50, 90, 180, 51, 89, 182, 52, 88, 183, 53, 87, 185, 53, 86, 186, 54, 85, 188, 55, 84, 189, 56, 83, 191, 57, 82, 192, 58, 81, 193, 58, 80, 195, 59, 79, 196, 60, 78, 198, 61, 77, 199, 62, 76, 200, 63, 75, 202, 64, 74, 203, 65, 73, 204, 66, 72, 206, 67, 71, 207, 68, 70, 208, 69, 69, 210, 70, 68, 211, 71, 67, 212, 72, 66, 213, 74, 65, 215, 75, 63, 216, 76, 62, 217, 77, 61, 218, 78, 60, 219, 80, 59, 221, 81, 58, 222, 82, 56, 223, 83, 55, 224, 85, 54, 225, 86, 53, 226, 87, 52, 227, 89, 51, 228, 90, 49, 229, 92, 48, 230, 93, 47, 231, 94, 46, 232, 96, 45, 233, 97, 43, 234, 99, 42, 235, 100, 41, 235, 102, 40, 236, 103, 38, 237, 105, 37, 238, 106, 36, 239, 108, 35, 239, 110, 33, 240, 111, 32, 241, 113, 31, 241, 115, 29, 242, 116, 28, 243, 118, 27, 243, 120, 25, 244, 121, 24, 245, 123, 23, 245, 125, 21, 246, 126, 20, 246, 128, 19, 247, 130, 18, 247, 132, 16, 248, 133, 15, 248, 135, 14, 248, 137, 12, 249, 139, 11, 249, 140, 10, 249, 142, 9, 250, 144, 8, 250, 146, 7, 250, 148, 7, 251, 150, 6, 251, 151, 6, 251, 153, 6, 251, 155, 6, 251, 157, 7, 252, 159, 7, 252, 161, 8, 252, 163, 9, 252, 165, 10, 252, 166, 12, 252, 168, 13, 252, 170, 15, 252, 172, 17, 252, 174, 18, 252, 176, 20, 252, 178, 22, 252, 180, 24, 251, 182, 26, 251, 184, 29, 251, 186, 31, 251, 188, 33, 251, 190, 35, 250, 192, 38, 250, 194, 40, 250, 196, 42, 250, 198, 45, 249, 199, 47, 249, 201, 50, 249, 203, 53, 248, 205, 55, 248, 207, 58, 247, 209, 61, 247, 211, 64, 246, 213, 67, 246, 215, 70, 245, 217, 73, 245, 219, 76, 244, 221, 79, 244, 223, 83, 244, 225, 86, 243, 227, 90, 243, 229, 93, 242, 230, 97, 242, 232, 101, 242, 234, 105, 241, 236, 109, 241, 237, 113, 241, 239, 117, 241, 241, 121, 242, 242, 125, 242, 244, 130, 243, 245, 134, 243, 246, 138, 244, 248, 142, 245, 249, 146, 246, 250, 150, 248, 251, 154, 249, 252, 157, 250, 253, 161, 252, 255, 164]);
+
+    function infernoColormap(t) {
+        // Colormap exacto inferno de matplotlib (256 colores)
         t = Math.max(0.0, Math.min(1.0, t));
-        var r = Math.sin(t * Math.PI - 0.5) * 0.5 + 0.5;
-        var g = Math.sin(t * Math.PI) * 0.9;
-        var b = Math.cos(t * Math.PI * 0.5);
-        if (t < 0.15) {
-            r = t * 2.0; g = t * 1.5; b = 0.2 + t * 4.0;
-        } else if (t > 0.8) {
-            r = 0.9 + (t - 0.8) * 0.5; g = 0.3 * (1.0 - t); b = 0.1 * (1.0 - t);
-        }
-        return [
-            Math.floor(Math.max(0, Math.min(255, r * 255))),
-            Math.floor(Math.max(0, Math.min(255, g * 255))),
-            Math.floor(Math.max(0, Math.min(255, b * 255)))
-        ];
+        var idx = Math.floor(t * 255);
+        if (idx > 255) idx = 255;
+        var off = idx * 3;
+        return [INFERNO_FLAT[off], INFERNO_FLAT[off + 1], INFERNO_FLAT[off + 2]];
     }
 
     function generarBitmapMapaCaos() {
@@ -710,7 +705,7 @@
                 var idxData = r * res + c;
                 var val = data[idxData];
                 var t = Math.min(1.0, val / maxVal);
-                var rgb = turboColormap(t);
+                var rgb = infernoColormap(t);
 
                 // En canvas Y=0 es arriba, así que Y=(res - 1 - r) o r directo
                 var pixelIdx = ((res - 1 - r) * res + c) * 4;
@@ -837,7 +832,7 @@
         var cbH = plotH;
         for (var py = 0; py < cbH; py++) {
             var normVal = 1.0 - (py / cbH);
-            var rgb = turboColormap(normVal);
+            var rgb = infernoColormap(normVal);
             ctx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
             ctx.fillRect(cbX, padTop + py, cbW, 1);
         }
@@ -888,6 +883,42 @@
             ctx.stroke();
         }
 
+        // 6. Leyenda interna dentro del mapa
+        var legW = 155;
+        var legH = 46;
+        var legX = padLeft + plotW - legW - 8;
+        var legY = padTop + 8;
+        ctx.fillStyle = (temaActual === 'dark') ? 'rgba(18, 24, 38, 0.88)' : 'rgba(255, 255, 255, 0.88)';
+        ctx.strokeStyle = color('border');
+        ctx.lineWidth = 1;
+        ctx.fillRect(legX, legY, legW, legH);
+        ctx.strokeRect(legX, legY, legW, legH);
+
+        // Ec,m2 (Cian sólido 2px)
+        ctx.strokeStyle = color('contourM2');
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(legX + 8, legY + 14);
+        ctx.lineTo(legX + 30, legY + 14);
+        ctx.stroke();
+
+        ctx.fillStyle = color('text');
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('E = Ec,m2 (vuelta m₂)', legX + 36, legY + 18);
+
+        // Ec,m1 (Dashed 1.6px)
+        ctx.strokeStyle = color('contourM1');
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(legX + 8, legY + 32);
+        ctx.lineTo(legX + 30, legY + 32);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillText('E = Ec,m1 (vuelta m₁)', legX + 36, legY + 36);
+
         ctx.restore();
     }
 
@@ -900,10 +931,10 @@
         // V(th1, th2) = -(m1+m2)g*l1*cos(th1) - m2*g*l2*cos(th2)
         // V(th1, th2) = Ec => curva analítica
         // cos(th2) = (Ec + (m1+m2)*g*l1*cos(th1)) / (-m2*g*l2)
-        function dibujarCurvaUmbral(ec, estiloColor, esDashed) {
+        function dibujarCurvaUmbral(ec, estiloColor, esDashed, ancho) {
             ctx.save();
             ctx.strokeStyle = estiloColor;
-            ctx.lineWidth = 1.6;
+            ctx.lineWidth = ancho || 1.6;
             if (esDashed) ctx.setLineDash([4, 4]);
 
             var denom = -p.m2 * p.g * p.l2;
@@ -937,10 +968,10 @@
             ctx.restore();
         }
 
-        // Contorno Ec_m2 (Cian punteado)
-        dibujarCurvaUmbral(ec2, color('contourM2'), true);
-        // Contorno Ec_m1 (Ámbar punteado)
-        dibujarCurvaUmbral(ec1, color('contourM1'), true);
+        // Contorno Ec_m2 (Cian sólido 2.0 px)
+        dibujarCurvaUmbral(ec2, color('contourM2'), false, 2.0);
+        // Contorno Ec_m1 (Ámbar punteado 1.6 px)
+        dibujarCurvaUmbral(ec1, color('contourM1'), true, 1.6);
     }
 
     // =========================================================================
@@ -972,14 +1003,14 @@
         ctx.fillRect(0, 0, cw, ch);
 
         var origenX = cw * 0.5;
-        var origenY = ch * 0.38;
+        var origenY = ch * 0.30;
         var escalaLongitud = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
         var xCart = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
         var p1x = origenX + xCart.x1 * escalaLongitud;
-        var p1y = origenY + xCart.y1 * escalaLongitud;
+        var p1y = origenY - xCart.y1 * escalaLongitud;
         var p2x = origenX + xCart.x2 * escalaLongitud;
-        var p2y = origenY + xCart.y2 * escalaLongitud;
+        var p2y = origenY - xCart.y2 * escalaLongitud;
 
         // 1. Estela térmica de la masa 2
         if (estado.mostrarEstela && estado.estelaM2.length > 1) {
@@ -1005,8 +1036,8 @@
 
                 ctx.strokeStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha + ')';
                 ctx.beginPath();
-                ctx.moveTo(origenX + ptPrev.x * escalaLongitud, origenY + ptPrev.y * escalaLongitud);
-                ctx.lineTo(origenX + ptCurr.x * escalaLongitud, origenY + ptCurr.y * escalaLongitud);
+                ctx.moveTo(origenX + ptPrev.x * escalaLongitud, origenY - ptPrev.y * escalaLongitud);
+                ctx.lineTo(origenX + ptCurr.x * escalaLongitud, origenY - ptCurr.y * escalaLongitud);
                 ctx.stroke();
             }
             ctx.restore();
@@ -1016,9 +1047,9 @@
         if (estado.modoLinealActivo) {
             var xCartLin = PenduloFisica.posicionesCartesianas(estado.xLineal, estado.params);
             var lin1x = origenX + xCartLin.x1 * escalaLongitud;
-            var lin1y = origenY + xCartLin.y1 * escalaLongitud;
+            var lin1y = origenY - xCartLin.y1 * escalaLongitud;
             var lin2x = origenX + xCartLin.x2 * escalaLongitud;
-            var lin2y = origenY + xCartLin.y2 * escalaLongitud;
+            var lin2y = origenY - xCartLin.y2 * escalaLongitud;
 
             ctx.save();
             ctx.setLineDash([5, 5]);
@@ -1117,9 +1148,10 @@
         ctx.setLineDash([]);
 
         // Cuña sombreada
-        var anguloInicio = Math.PI * 0.5; // Vertical hacia abajo
-        var anguloFin = anguloInicio + angulo;
-        var sentidoAntihorario = angulo < 0;
+        var angNorm = Math.atan2(Math.sin(angulo), Math.cos(angulo));
+        var anguloInicio = Math.PI * 0.5; // Vertical hacia abajo en canvas (+Y)
+        var anguloFin = anguloInicio - angNorm; // Hacia la varilla
+        var sentidoAntihorario = angNorm > 0;
 
         ctx.fillStyle = estiloColor.replace(')', ', 0.22)').replace('rgb', 'rgba');
         ctx.strokeStyle = estiloColor;
@@ -1337,46 +1369,80 @@
             ctxS.fillRect(0, 0, cw, ch);
 
             var ox = cw * 0.5;
-            var oy = ch * 0.4;
+            var oy = ch * 0.30;
             var esc = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
-            // Péndulo Base (sólido)
-            var cBase = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
-            var b1x = ox + cBase.x1 * esc, b1y = oy + cBase.y1 * esc;
-            var b2x = ox + cBase.x2 * esc, b2y = oy + cBase.y2 * esc;
+            var colBase = color('th1');     // Cian (#4cc9f0 / #0284c7)
+            var colGem = color('energy');    // Ámbar (#ffb703 / #b45309)
 
-            ctxS.strokeStyle = color('rod');
-            ctxS.lineWidth = 4;
+            // 1. Péndulo Base (Cian completo: varillas y ambas masas)
+            var cBase = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
+            var b1x = ox + cBase.x1 * esc, b1y = oy - cBase.y1 * esc;
+            var b2x = ox + cBase.x2 * esc, b2y = oy - cBase.y2 * esc;
+
+            ctxS.strokeStyle = colBase;
+            ctxS.lineWidth = 3.5;
             ctxS.lineCap = 'round';
             ctxS.beginPath();
             ctxS.moveTo(ox, oy); ctxS.lineTo(b1x, b1y); ctxS.lineTo(b2x, b2y);
             ctxS.stroke();
 
-            ctxS.fillStyle = color('th1');
-            ctxS.beginPath(); ctxS.arc(b1x, b1y, 12, 0, 2 * Math.PI); ctxS.fill();
-            ctxS.fillStyle = color('th2');
-            ctxS.beginPath(); ctxS.arc(b2x, b2y, 12, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.fillStyle = colBase;
+            ctxS.beginPath(); ctxS.arc(b1x, b1y, 9, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.strokeStyle = color('bg'); ctxS.lineWidth = 1.5; ctxS.stroke();
+            ctxS.beginPath(); ctxS.arc(b2x, b2y, 10, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.stroke();
 
-            // Péndulo Gemelo (translúcido con borde resaltado)
+            // 2. Péndulo Gemelo (Ámbar completo: varillas y ambas masas)
             if (estado.xGemelo) {
                 var cGem = PenduloFisica.posicionesCartesianas(estado.xGemelo, estado.params);
-                var g1x = ox + cGem.x1 * esc, g1y = oy + cGem.y1 * esc;
-                var g2x = ox + cGem.x2 * esc, g2y = oy + cGem.y2 * esc;
+                var g1x = ox + cGem.x1 * esc, g1y = oy - cGem.y1 * esc;
+                var g2x = ox + cGem.x2 * esc, g2y = oy - cGem.y2 * esc;
 
-                ctxS.strokeStyle = 'rgba(255, 183, 3, 0.75)';
-                ctxS.lineWidth = 2.5;
-                ctxS.setLineDash([4, 4]);
+                ctxS.strokeStyle = colGem;
+                ctxS.lineWidth = 3.0;
+                ctxS.lineCap = 'round';
                 ctxS.beginPath();
                 ctxS.moveTo(ox, oy); ctxS.lineTo(g1x, g1y); ctxS.lineTo(g2x, g2y);
                 ctxS.stroke();
-                ctxS.setLineDash([]);
 
-                ctxS.fillStyle = 'rgba(255, 183, 3, 0.85)';
-                ctxS.beginPath(); ctxS.arc(g2x, g2y, 11, 0, 2 * Math.PI); ctxS.fill();
-                ctxS.strokeStyle = '#ffffff';
-                ctxS.lineWidth = 1.5;
+                ctxS.fillStyle = colGem;
+                ctxS.beginPath(); ctxS.arc(g1x, g1y, 9, 0, 2 * Math.PI); ctxS.fill();
+                ctxS.strokeStyle = color('bg'); ctxS.lineWidth = 1.5; ctxS.stroke();
+                ctxS.beginPath(); ctxS.arc(g2x, g2y, 10, 0, 2 * Math.PI); ctxS.fill();
                 ctxS.stroke();
             }
+
+            // Pivote pequeño (r = 3 px)
+            ctxS.fillStyle = color('text');
+            ctxS.beginPath();
+            ctxS.arc(ox, oy, 3, 0, 2 * Math.PI);
+            ctxS.fill();
+
+            // Leyenda de identificación en escenario
+            var legW = 195;
+            var legH = 46;
+            var legX = 12;
+            var legY = 12;
+            ctxS.fillStyle = (temaActual === 'dark') ? 'rgba(18, 24, 38, 0.88)' : 'rgba(255, 255, 255, 0.88)';
+            ctxS.strokeStyle = color('border');
+            ctxS.lineWidth = 1;
+            ctxS.fillRect(legX, legY, legW, legH);
+            ctxS.strokeRect(legX, legY, legW, legH);
+
+            // Item 1: Péndulo base (Cian)
+            ctxS.fillStyle = colBase;
+            ctxS.beginPath(); ctxS.arc(legX + 16, legY + 15, 6, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.fillStyle = color('text');
+            ctxS.font = '11px system-ui, sans-serif';
+            ctxS.textAlign = 'left';
+            ctxS.fillText('Péndulo 1 (base)', legX + 28, legY + 19);
+
+            // Item 2: Péndulo gemelo (Ámbar)
+            ctxS.fillStyle = colGem;
+            ctxS.beginPath(); ctxS.arc(legX + 16, legY + 31, 6, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.fillStyle = color('text');
+            ctxS.fillText('Péndulo 2 (+0.001 rad)', legX + 28, legY + 35);
 
             ctxS.restore();
         }
@@ -1473,7 +1539,7 @@
         ctx.fillRect(0, 0, cw, ch);
 
         var ox = cw * 0.5;
-        var oy = ch * 0.42;
+        var oy = ch * 0.30;
         var esc = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
         var n = pendulos.length;
@@ -1484,8 +1550,8 @@
         for (var i = 0; i < n; i += 2) {
             var c = PenduloFisica.posicionesCartesianas(pendulos[i], estado.params);
             ctx.moveTo(ox, oy);
-            ctx.lineTo(ox + c.x1 * esc, oy + c.y1 * esc);
-            ctx.lineTo(ox + c.x2 * esc, oy + c.y2 * esc);
+            ctx.lineTo(ox + c.x1 * esc, oy - c.y1 * esc);
+            ctx.lineTo(ox + c.x2 * esc, oy - c.y2 * esc);
         }
         ctx.stroke();
 
@@ -1494,11 +1560,17 @@
         for (var j = 0; j < n; j++) {
             var c2 = PenduloFisica.posicionesCartesianas(pendulos[j], estado.params);
             var px = ox + c2.x2 * esc;
-            var py = oy + c2.y2 * esc;
+            var py = oy - c2.y2 * esc;
             ctx.beginPath();
             ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
             ctx.fill();
         }
+
+        // Pivote pequeño
+        ctx.fillStyle = color('text');
+        ctx.beginPath();
+        ctx.arc(ox, oy, 2.5, 0, 2 * Math.PI);
+        ctx.fill();
 
         ctx.restore();
     }
@@ -1678,6 +1750,25 @@
         dom.lblMcT.textContent = dom.sliderMcT.value + ' s';
     }
 
+    function aplicarPreset(pKey) {
+        if (window.PRESETS_PENDULO && window.PRESETS_PENDULO[pKey]) {
+            var preset = window.PRESETS_PENDULO[pKey];
+            if (dom.sliderTh1) dom.sliderTh1.value = (preset.x0[0] * 180 / Math.PI).toFixed(0);
+            if (dom.sliderTh2) dom.sliderTh2.value = (preset.x0[1] * 180 / Math.PI).toFixed(0);
+            if (dom.sliderW1) dom.sliderW1.value = preset.x0[2].toFixed(1);
+            if (dom.sliderW2) dom.sliderW2.value = preset.x0[3].toFixed(1);
+
+            if (dom.sliderM1) dom.sliderM1.value = preset.params.m1;
+            if (dom.sliderM2) dom.sliderM2.value = preset.params.m2;
+            if (dom.sliderL1) dom.sliderL1.value = preset.params.l1;
+            if (dom.sliderL2) dom.sliderL2.value = preset.params.l2;
+            if (dom.sliderG) dom.sliderG.value = preset.params.g;
+
+            actualizarParametrosLabels();
+            inicializarSimulacion();
+        }
+    }
+
     // =========================================================================
     // 13. NAVEGACIÓN Y CAMBIO DE PESTAÑAS
     // =========================================================================
@@ -1715,7 +1806,9 @@
             }
         });
 
-        if (nuevaTab === 'montecarlo') {
+        if (nuevaTab === 'gemelos') {
+            aplicarPreset('caotico');
+        } else if (nuevaTab === 'montecarlo') {
             reiniciarMonteCarlo();
         } else if (nuevaTab === 'mapacaos') {
             redibujarMapaCaos();
@@ -1790,13 +1883,13 @@
                 temaActual = 'light';
                 dom.body.classList.remove('theme-dark');
                 dom.body.classList.add('theme-light');
-                dom.themeIcon.textContent = '☀️';
+                dom.themeIcon.textContent = '';
                 dom.themeText.textContent = 'Claro';
             } else {
                 temaActual = 'dark';
                 dom.body.classList.remove('theme-light');
                 dom.body.classList.add('theme-dark');
-                dom.themeIcon.textContent = '🌙';
+                dom.themeIcon.textContent = '';
                 dom.themeText.textContent = 'Oscuro';
             }
             redibujarMapaCaos();
@@ -1841,21 +1934,7 @@
         dom.presetBtns.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var pKey = btn.getAttribute('data-preset');
-                if (window.PRESETS_PENDULO && window.PRESETS_PENDULO[pKey]) {
-                    var preset = window.PRESETS_PENDULO[pKey];
-                    dom.sliderTh1.value = (preset.x0[0] * 180 / Math.PI).toFixed(0);
-                    dom.sliderTh2.value = (preset.x0[1] * 180 / Math.PI).toFixed(0);
-                    dom.sliderW1.value = preset.x0[2].toFixed(1);
-                    dom.sliderW2.value = preset.x0[3].toFixed(1);
-
-                    dom.sliderM1.value = preset.params.m1;
-                    dom.sliderM2.value = preset.params.m2;
-                    dom.sliderL1.value = preset.params.l1;
-                    dom.sliderL2.value = preset.params.l2;
-                    dom.sliderG.value = preset.params.g;
-
-                    inicializarSimulacion();
-                }
+                aplicarPreset(pKey);
             });
         });
 
@@ -2044,12 +2123,12 @@
         function onPointerDown(evt) {
             var pos = getMousePos(evt);
             var ox = pos.cw * 0.5;
-            var oy = pos.ch * 0.38;
+            var oy = pos.ch * 0.30;
             var esc = Math.min(pos.cw, pos.ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
             var c = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
-            var p1x = ox + c.x1 * esc, p1y = oy + c.y1 * esc;
-            var p2x = ox + c.x2 * esc, p2y = oy + c.y2 * esc;
+            var p1x = ox + c.x1 * esc, p1y = oy - c.y1 * esc;
+            var p2x = ox + c.x2 * esc, p2y = oy - c.y2 * esc;
 
             var d1 = Math.hypot(pos.x - p1x, pos.y - p1y);
             var d2 = Math.hypot(pos.x - p2x, pos.y - p2y);
@@ -2073,11 +2152,11 @@
             if (!estado.arrastre.activo) return;
             var pos = getMousePos(evt);
             var ox = pos.cw * 0.5;
-            var oy = pos.ch * 0.38;
+            var oy = pos.ch * 0.30;
             var esc = Math.min(pos.cw, pos.ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
             var c = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
-            var p1x = ox + c.x1 * esc, p1y = oy + c.y1 * esc;
+            var p1x = ox + c.x1 * esc, p1y = oy - c.y1 * esc;
 
             if (estado.arrastre.masa === 1) {
                 var dx1 = pos.x - ox;
@@ -2128,7 +2207,7 @@
             temaActual = 'light';
             dom.body.classList.remove('theme-dark');
             dom.body.classList.add('theme-light');
-            dom.themeIcon.textContent = '☀️';
+            dom.themeIcon.textContent = '';
             dom.themeText.textContent = 'Claro';
         }
 

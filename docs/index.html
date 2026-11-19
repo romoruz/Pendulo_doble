@@ -17,16 +17,27 @@
 
             <!-- Cuatro Pestañas Principales -->
             <nav class="mode-tabs-container" aria-label="Pestañas de visualización">
-                <button class="mode-tab-btn active" data-tab="pendulo" id="tab-pendulo">Péndulo</button>
-                <button class="mode-tab-btn" data-tab="gemelos" id="tab-gemelos">Gemelos (caos)</button>
-                <button class="mode-tab-btn" data-tab="montecarlo" id="tab-montecarlo">Monte Carlo</button>
+                <button class="mode-tab-btn" data-tab="pendulo" id="tab-pendulo">Péndulo</button>
+                <button class="mode-tab-btn" data-tab="gemelos" id="tab-gemelos">Efecto mariposa</button>
+                <button class="mode-tab-btn" data-tab="montecarlo" id="tab-montecarlo">Muchos péndulos (Monte Carlo)</button>
                 <button class="mode-tab-btn" data-tab="mapacaos" id="tab-mapacaos">Mapa de caos</button>
             </nav>
+            <script>
+            (function() {
+                var p = new URLSearchParams(window.location.search);
+                var tab = p.get('tab') || 'pendulo';
+                var btn = document.getElementById('tab-' + tab) || document.getElementById('tab-pendulo');
+                if (btn) btn.className = 'mode-tab-btn active';
+                if (p.get('theme') === 'light') {
+                    document.body.className = 'theme-light';
+                }
+            })();
+            </script>
 
             <!-- Acciones de Cabecera -->
             <div class="header-actions">
                 <button id="btn-theme-toggle" class="btn-header" title="Alternar tema oscuro / claro" aria-label="Alternar tema">
-                    <span id="theme-icon">🌙</span> <span id="theme-text">Oscuro</span>
+                    <span id="theme-icon"></span><span id="theme-text">Oscuro</span>
                 </button>
                 <button id="btn-toggle-sidebar" class="btn-header" title="Mostrar u ocultar barra de controles" aria-label="Ocultar barra de controles">
                     <span>☰</span> <span>Barra Lateral</span>
@@ -165,9 +176,9 @@
                         <button id="btn-toggle-phase-chart" class="btn-sidebar" style="margin-top: 8px; width: 100%;">Ver espacio fase (θ, ω)</button>
                     </div>
 
-                    <!-- Controles para Gemelos -->
+                    <!-- Controles para Efecto Mariposa -->
                     <div id="controls-tab-gemelos" style="display: none;">
-                        <span class="sidebar-section-title">Péndulos Gemelos</span>
+                        <span class="sidebar-section-title">Efecto Mariposa</span>
                         <div class="slider-group">
                             <div class="slider-label-row">
                                 <span>Separación δ:</span>
@@ -341,10 +352,10 @@
                 <!-- PESTAÑA 2: GEMELOS (CAOS) -->
                 <div id="view-gemelos" class="tab-view" style="display: none;">
                     <div class="gemelos-layout">
-                        <!-- Columna Izquierda (~55%): Péndulos Gemelos Superpuestos -->
+                        <!-- Columna Izquierda: Péndulos Superpuestos -->
                         <div class="gemelos-stage-col">
                             <div class="stage-header-title">
-                                <span>Péndulos con diferencia inicial δ</span>
+                                <span>Diferencia inicial: 0.001 rad (≈ 1 mm en la punta)</span>
                                 <span id="gemelos-status-badge" class="badge-status">Iniciando...</span>
                             </div>
                             <div class="gemelos-canvas-wrapper">

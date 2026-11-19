@@ -132,6 +132,7 @@ def generar_reference_json() -> None:
     """Genera docs/reference.json con 3 juegos de parámetros × 2000 pasos de RK4 3/8 (dt=0.005)."""
     print("-> Generando docs/reference.json (3 juegos de parámetros × 2000 pasos)...")
     from analysis.pendulo.config import PARAMS_TEST3
+    from analysis.pendulo.flips import contar_vueltas_trayectoria
     dt = 0.005
     n_pasos = 2000
     t_max = dt * n_pasos
@@ -158,6 +159,13 @@ def generar_reference_json() -> None:
             "params": {"m1": 3.0, "m2": 0.5, "l1": 0.7, "l2": 1.4, "g": 9.81},
             "x0": [0.5, -0.5, 0.0, 0.0],
         },
+        {
+            "id": "params_alta_energia",
+            "nombre": "Juego 4: Alta Energía con Vueltas (x0=[2.6, 2.6])",
+            "params_obj": PARAMS_DEFECTO,
+            "params": {"m1": 1.0, "m2": 1.0, "l1": 1.0, "l2": 1.0, "g": 9.81},
+            "x0": [2.6, 2.6, 0.0, 0.0],
+        },
     ]
 
     datos_ref = {
@@ -172,12 +180,14 @@ def generar_reference_json() -> None:
         p_obj = caso["params_obj"]
         x0_arr = np.array(caso["x0"], dtype=np.float64)
         t_arr, traj_arr = integrar_rk4(x0_arr, t_max=t_max, dt=dt, params=p_obj)
+        vueltas_m2, _ = contar_vueltas_trayectoria(traj_arr[:, 1])
 
         datos_ref["casos"].append({
             "id": caso["id"],
             "nombre": caso["nombre"],
             "params": caso["params"],
             "x0": caso["x0"],
+            "flips_m2": int(vueltas_m2),
             "trayectoria": traj_arr.tolist(),
         })
 
