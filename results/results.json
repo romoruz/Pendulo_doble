@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-19 09:23:51",
+  "timestamp": "2026-11-19 09:40:14",
   "semilla": 20261119,
   "equilibrios": {
     "origen": {
@@ -100,7 +100,7 @@
     ],
     "dt_a1": 0.01,
     "t_max_a1": 1500.0,
-    "tiempo_cruce_s": 100.10000000000001,
+    "tiempo_cruce_s": 884.3000000000001,
     "error_max_rk4_t40_dt0005": 6.973577480510185e-06,
     "deriva_final_rk4_1500s": 0.008368074509870886,
     "error_max_punto_medio_1500s": 0.0051965668959771,

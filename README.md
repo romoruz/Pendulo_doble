@@ -8,10 +8,10 @@ Proyecto de Sistemas Dinámicos II, Departamento de Matemáticas Aplicadas, ITAM
 1. **Simulador Web Interactivo**: Página estática en HTML/JS lista para publicarse en GitHub Pages (o ejecutarse de manera local sin servidor ni conexión a internet).
 2. **Análisis Numérico y Teórico en Python**: Código para la derivación de equilibrios, linealización, órdenes de convergencia, análisis bootstrap y mapas de caos.
 3. **Láminas de Exposición**:
-   - `figures/lamina_a.png` (y `.svg`): Conservación de energía, orden de convergencia en el espacio de estados y en energía, y comparación de trayectorias lineales vs no lineales.
+   - `figures/lamina_a.png` (y `.svg`): Conservación de energía, orden de convergencia en el espacio de estados y en energía, y comparación de trayectorias lineales vs no lineales. Exportada también en paneles individuales listos para proyección: `figures/a1.png` / `.svg`, `figures/a2.png` / `.svg`, y `figures/a3.png` / `.svg`.
    - `figures/lamina_b.png` (y `.svg`): Exploratorio de 1000 condiciones iniciales con ruido correlacionado (Cholesky), histogramas de vueltas con intervalos bootstrap BCa y análisis de estabilidad numérica macroscópica ($dt$ vs $dt/2$).
-   - `figures/figura_c.png` (y `.svg`): Mapas de exponente de Lyapunov de tiempo finito (FTLE) en malla de 200×200 con contornos de energía de los puntos silla ($E_{c,m2}$ y $E_{c,m1}$), demostrando que la frontera del caos no coincide con los umbrales de energía.
-   - `figures/figura_d.png` (y `.svg`): Paisaje de energía potencial $V(\theta_1, \theta_2)$ en el toro plano $[-\pi, \pi]^2$ con isolíneas, los 4 equilibrios y los umbrales de energía de las sillas ($E_{c,m2}, E_{c,m1}, E_{c,\text{ambas}}$).
+   - `figures/figura_c.png` (y `.svg`): Mapas de exponente de Lyapunov de tiempo finito (FTLE) en malla de 200×200 con contornos de energía de los puntos silla ($E_{c,m2}$ en cian y $E_{c,m1}$ en negro punteado), demostrando que la frontera del caos no coincide con los umbrales de energía.
+   - `figures/figura_d.png` (y `.svg`): Paisaje de energía potencial $V(\theta_1, \theta_2)$ en el toro plano $[-\pi, \pi]^2$ con isolíneas, clasificación rigurosa de los 4 equilibrios por eigenvalores y los umbrales de energía de las sillas ($E_{c,m2}, E_{c,m1}, E_{c,\text{ambas}}$).
 
 ---
 
@@ -69,26 +69,23 @@ $$\lambda_T = \frac{1}{T} \sum_{k=1}^{K} \ln\left(\frac{d_k}{d_0}\right)$$
 
 ## Guía de Exposición (Mapeo Conceptual para Sistemas Dinámicos II)
 
-Orden sugerido de presentación de láminas y conceptos clave a defender:
+El orden de la exposición sigue estrictamente el índice del informe del equipo:
 
-1. **Lámina A (A1, A2, A3) — Fundamentos Numéricos y Linealización**:
-   - **A1 (Conservación de energía a corto vs largo plazo)**: Defiende la diferencia entre métodos estándar y simplécticos. En horizontes cortos ($T \le 40$ s), RK4 es más preciso por su alto orden; a largo plazo ($T > 400$ s), la deriva secular de RK4 domina y el Punto Medio Implícito gana al mantener la energía acotada en una variedad simpléctica cercana (teorema de backward error analysis).
-   - **A2 (Órdenes de convergencia estado y energía)**: Valida la implementación rigurosa: orden 4 en estado para RK4, orden 2 para Punto Medio, y la superconvergencia $O(dt^5)$ en energía de RK4.
-   - **A3 (Linealización y modos normales)**: Explica la aproximación armónica alrededor del equilibrio estable $(0,0,0,0)$. Valida que para amplitudes pequeñas ($0.05$ rad) la solución lineal describe fielmente el sistema desacoplado en modos normales ($\omega_1, \omega_2$), mientras que a amplitudes moderadas ($0.8$ rad) aparecen armónicos superiores y corrimiento de frecuencias. Se discute por qué Hartman-Grobman no aplica en el origen (centro no hiperbólico).
+1. **Sección 4 del informe — Formulación hamiltoniana y espacio fase (Figura D)**:
+   - **Figura D (Paisaje de potencial y clasificación de equilibrios)**: Muestra la topología del toro plano $[-\pi, \pi]^2$ y las curvas de nivel de $V(\theta_1, \theta_2)$. Defiende la clasificación rigurosa según los eigenvalores del Jacobiano: $(0,0)$ centro con eigenvalores imaginarios puros; $(0,\pm\pi)$ y $(\pm\pi,0)$ sillas-centro no hiperbólicas (un par imaginario puro y un par real simétrico); y $(\pm\pi,\pm\pi)$ silla doble estrictamente hiperbólica. Identifica los niveles de energía crítica de las separatrices: $E_{c,m2}$, $E_{c,m1}$ y $E_{c,\text{ambas}}$.
 
-2. **Figura D — Paisaje de Energía Potencial y Puntos de Equilibrio**:
-   - Muestra la topología del espacio de fases sobre el toro plano $[-\pi, \pi]^2$ y las curvas de nivel de $V(\theta_1, \theta_2)$.
-   - Identifica los cuatro equilibrios: mínimo $(0,0)$, dos sillas $(\pi,0)$ y $(0,\pi)$ con sus energías críticas $E_{c,m2}$ y $E_{c,m1}$, y el máximo $(\pi,\pi)$ con $E_{c,\text{ambas}}$.
-   - Introduce la noción de variedades invariantes y separatrices asociadas a los puntos de silla que organizan el flujo global.
+2. **Sección 5 del informe — Linealización y modos normales (A3 y Figura D)**:
+   - **A3 (Comparación lineal vs no lineal)**: Explica la dinámica local alrededor del reposo $(0,0,0,0)$ mediante el sistema desacoplado en modos normales ($\omega_1, \omega_2$). Para pequeñas amplitudes ($0.05$ rad) la solución lineal $\dot{x}=Ax$ describe fielmente el sistema; para amplitudes moderadas ($0.8$ rad) surgen armónicos superiores y desfase por no linealidad.
+   - **Conexión teórica con Figura D**: Explica por qué el Teorema de Hartman-Grobman no aplica en el origen (centro no hiperbólico), requiriendo el uso de la energía mecánica total como función de Lyapunov estricta (Teorema de Lagrange-Dirichlet) para demostrar estabilidad.
 
-3. **Figura C — Transición al Caos y Mapas de FTLE**:
-   - Muestra cómo la frontera del caos no coincide con los umbrales de energía de los puntos silla ($E_{c,m2}$ o $E_{c,m1}$).
-   - Destaca la presencia de lenguas regulares (en fase $\theta_1 \approx \theta_2$) que sobreviven muy por encima de $E_{c,m2}$, y zonas de caos que emergen por debajo de umbrales en masas desiguales.
-   - Relaciona el exponente de Lyapunov con la divergencia exponencial y la pérdida de previsibilidad determinista.
+3. **Sección 6 del informe — Métodos numéricos, convergencia y estadística de vueltas (A1, A2 y Lámina B)**:
+   - **A1 (Conservación de energía a largo plazo)**: Compara RK4 3/8 contra el integrador simpléctico de punto medio implícito. En horizontes moderados ($T \le 40$ s con $dt = 0.005$ s), RK4 es superior con error relativo $< 7 \times 10^{-6}$. A largo plazo ($T = 1500$ s), la deriva creciente de RK4 cruza y supera en $t \approx 884$ s la envolvente del error del punto medio, demostrando la superioridad simpléctica para integraciones prolongadas.
+   - **A2 (Órdenes de convergencia estado y energía)**: Demuestra el orden 4 global en estado para RK4 y orden 2 para punto medio. En energía, valida la superconvergencia $O(dt^5)$ de RK4 en oscilaciones armónicas regulares derivada analíticamente de $|R(iz)|^2 = 1 - z^6/72 + O(z^8)$ (pendiente observada 4.93).
+   - **Lámina B (Exploratorio estocástico y estabilidad macroscópica)**: Con 1000 condiciones iniciales perturbadas vía Cholesky, B1 demuestra 0 vueltas analíticamente garantizadas bajo $E < E_{c,m2}$; B2 muestra el régimen caótico con intervalos bootstrap BCa; y B3 demuestra la estabilidad macroscópica del atractor: aunque el $87.5\%$ de las trayectorias individuales divergen al reducir el paso a $dt/2$, la prueba de Kolmogorov-Smirnov no rechaza la igualdad distributiva ($p = 0.89$), con la observación de que KS es conservador para datos discretos.
 
-4. **Lámina B — Estadística Colectiva y Sensibilidad Macroscópica**:
-   - Compara ensembles de 1000 trayectorias: a baja energía el número de vueltas es idénticamente cero (IC degenerado $[0,0]$); a alta energía el histograma exhibe asimetría y variabilidad caótica, cuantificada con bootstrap BCa.
-   - **Estabilidad macroscópica ($dt$ vs $dt/2$)**: Muestra la paradoja del caos: aunque el $87.5\%$ de las trayectorias individuales divergen microscópicamente al refinar el paso temporal, la distribución estadística macroscópica se preserva (prueba Kolmogorov-Smirnov no rechaza con $p = 0.888$), demostrando propiedades ergódicas del atractor en el espacio de fases.
+4. **Sección 7 del informe — Transición al caos y mapas de FTLE (Figura C)**:
+   - **Figura C (Desacople de umbrales energéticos y frontera del caos)**: Analiza los mapas de FTLE en malla 200×200 con contornos de energía de las sillas ($E_{c,m2}$ en cian y $E_{c,m1}$ en negro punteado) para masas iguales y desiguales ($m_2=0.25$).
+   - Defiende que los umbrales de energía potencial son necesarios pero no suficientes para el caos: lenguas regulares en modo en fase ($\theta_1 \approx \theta_2$) sobreviven muy por encima de $E_{c,m2}$, y el caos puede emerger antes de $E_{c,m2}$ bajo asimetría de masas.
 
 ---
 

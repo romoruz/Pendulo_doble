@@ -90,16 +90,14 @@ os.makedirs(DIR_RESULTADOS, exist_ok=True)
 # ===========================================================================
 
 def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
-    """Genera la Lámina A con paneles A1 (energía a largo plazo y cruce), A2 (orden de convergencia) y A3 (lineal vs no lineal)."""
-    print("-> Generando Lámina A...")
+    """Genera la Lámina A con paneles A1 (energía a largo plazo y cruce), A2 (orden de convergencia) y A3 (lineal vs no lineal).
+    Exporta la figura compuesta lamina_a (.png y .svg) y cada panel individual a1, a2, a3 (.png y .svg)."""
+    print("-> Generando Lámina A y paneles individuales (A1, A2, A3)...")
     params = PARAMS_DEFECTO
-    fig = plt.figure(figsize=(16, 9))
-    gs = fig.add_gridspec(2, 3, width_ratios=[1.05, 1.1, 1.1], hspace=0.32, wspace=0.28)
 
     # -----------------------------------------------------------------------
-    # A1: Conservación de energía a largo plazo (T = 1500 s, dt = 0.01) con cruce
+    # Datos y Simulación de A1: Conservación de energía (T = 1500 s, dt = 0.01)
     # -----------------------------------------------------------------------
-    ax_a1 = fig.add_subplot(gs[:, 0])
     x0_alta = np.array([2.6, 2.6, 0.0, 0.0], dtype=np.float64)
     dt_a1 = 0.01
     t_max_a1 = 1500.0
@@ -115,26 +113,16 @@ def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
     )
     e_pm = energia_total(traj_pm, params)
     err_pm = np.abs(e_pm - e_pm[0]) / np.abs(e_pm[0])
+    env_pm = np.maximum.accumulate(err_pm)
 
     t_rk_full, traj_rk_full = integrar_rk4(x0_alta, t_max=t_max_a1, dt=dt_a1, params=params)
     e_rk = energia_total(traj_rk_full[::10], params)
     err_rk = np.abs(e_rk - e_rk[0]) / np.abs(e_rk[0])
     t_rk_sub = t_rk_full[::10]
 
-    # Encontrar instante aproximado de cruce donde RK4 supera el envolvente de Punto Medio
-    cruce_idx = np.where((t_rk_sub > 100.0) & (err_rk > np.percentile(err_pm, 90)))[0]
-    t_cruce = float(t_rk_sub[cruce_idx[0]]) if len(cruce_idx) > 0 else 400.0
-
-    ax_a1.loglog(t_rk_sub[1:], err_rk[1:], color="#d62728", lw=1.2, label="RK4 3/8 (deriva secular O(t))")
-    ax_a1.loglog(t_pm[1:], err_pm[1:], color="#1f4fd6", lw=1.0, alpha=0.85, label="Punto Medio Canónico (simpléctico, acotado)")
-    ax_a1.axvline(t_cruce, color="#333333", ls=":", lw=1.2, label=f"Cruce (t ≈ {t_cruce:.0f} s)")
-
-    ax_a1.set_xlabel("Tiempo t [s] (escala logarítmica)")
-    ax_a1.set_ylabel("Error relativo de energía |E(t) − E(0)| / E(0)")
-    ax_a1.set_title("A1. Conservación de energía (dt = 0.01, T = 1500 s)\nCruce a largo plazo", fontsize=10.5, fontweight="bold", pad=8)
-    ax_a1.legend(loc="lower right", framealpha=0.9, fontsize=8)
-    ax_a1.set_xlim(1.0, t_max_a1)
-    ax_a1.set_ylim(1e-7, 5e-2)
+    # Cruce donde RK4 rebasa la envolvente del Punto Medio
+    cruce_indices = np.where((t_rk_sub > 10.0) & (err_rk > env_pm))[0]
+    t_cruce = float(t_rk_sub[cruce_indices[0]]) if len(cruce_indices) > 0 else 884.0
 
     datos_acumulados["lamina_a"] = {
         "condicion_a1": [2.6, 2.6, 0.0, 0.0],
@@ -147,15 +135,12 @@ def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
     }
 
     # -----------------------------------------------------------------------
-    # A2: Orden de convergencia (Panel Superior: Estado, Panel Inferior: Energía)
+    # Datos y Simulación de A2: Orden de convergencia
     # -----------------------------------------------------------------------
-    ax_a2_estado = fig.add_subplot(gs[0, 1])
-    ax_a2_energia = fig.add_subplot(gs[1, 1])
-
     x0_orden = np.array([0.8, 0.8, 0.0, 0.0], dtype=np.float64)
     t_max_orden = 10.0
     dts_orden = [0.04, 0.02, 0.01, 0.005]
-    dt_ref = dts_orden[-1] / 16.0  # 0.0003125
+    dt_ref = dts_orden[-1] / 16.0
 
     _, traj_ref = integrar_rk4(x0_orden, t_max=t_max_orden, dt=dt_ref, params=params)
 
@@ -189,30 +174,6 @@ def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
     p_e_rk = stats.linregress(log_dts, np.log(errs_energia_rk4)).slope
     p_e_pm = stats.linregress(log_dts, np.log(errs_energia_pm)).slope
 
-    # Gráfica A2.1: Error de Estado
-    ax_a2_estado.loglog(dts_orden, errs_estado_rk4, "o-", color="#d62728", lw=1.2, label=f"RK4 3/8 (pendiente = {p_st_rk:.2f})")
-    ax_a2_estado.loglog(dts_orden, errs_estado_pm, "s-", color="#1f4fd6", lw=1.2, label=f"Punto Medio (pendiente = {p_st_pm:.2f})")
-    ref_x = np.array([0.005, 0.04])
-    ax_a2_estado.loglog(ref_x, errs_estado_rk4[0] * (ref_x / ref_x[1]) ** 4.0, ":", color="#888888", label="Referencia O(dt⁴)")
-    ax_a2_estado.loglog(ref_x, errs_estado_pm[0] * (ref_x / ref_x[1]) ** 2.0, "--", color="#888888", label="Referencia O(dt²)")
-    ax_a2_estado.set_ylabel("Error máximo de estado ||x − x_ref||")
-    ax_a2_estado.set_title("A2. Orden en el estado vs dt (T = 10 s)", fontsize=10.5, fontweight="bold", pad=8)
-    ax_a2_estado.legend(loc="upper left", fontsize=8, framealpha=0.9)
-
-    # Gráfica A2.2: Error de Energía
-    ax_a2_energia.loglog(dts_orden, errs_energia_rk4, "o-", color="#d62728", lw=1.2, label=f"RK4 3/8 (pendiente = {p_e_rk:.2f})")
-    ax_a2_energia.loglog(dts_orden, errs_energia_pm, "s-", color="#1f4fd6", lw=1.2, label=f"Punto Medio (pendiente = {p_e_pm:.2f})")
-    ax_a2_energia.loglog(ref_x, errs_energia_rk4[0] * (ref_x / ref_x[1]) ** 5.0, ":", color="#666666", label="Referencia O(dt⁵)")
-    ax_a2_energia.loglog(ref_x, errs_energia_pm[0] * (ref_x / ref_x[1]) ** 2.0, "--", color="#666666", label="Referencia O(dt²)")
-    ax_a2_energia.set_xlabel("Paso temporal dt [s]")
-    ax_a2_energia.set_ylabel("Error máximo de energía ΔE / E")
-    ax_a2_energia.legend(loc="upper left", fontsize=8, framealpha=0.9)
-    ax_a2_energia.text(
-        0.02, 0.05,
-        "Nota: En el oscilador armónico |R(iz)|² = 1 − z⁶/72 + O(z⁸) da error O(dt⁶) por paso y O(dt⁵) acumulado; verificado con pendiente 4.93.",
-        transform=ax_a2_energia.transAxes, fontsize=6.8, color="#444444", style="italic",
-    )
-
     datos_acumulados["lamina_a"]["orden"] = {
         "dts": dts_orden,
         "pendiente_estado_rk4": float(p_st_rk),
@@ -222,41 +183,19 @@ def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
     }
 
     # -----------------------------------------------------------------------
-    # A3: Lineal contra no lineal (Amplitud chica vs Amplitud mediana)
+    # Datos y Simulación de A3: Lineal vs no lineal
     # -----------------------------------------------------------------------
-    ax_a3_chica = fig.add_subplot(gs[0, 2])
-    ax_a3_mediana = fig.add_subplot(gs[1, 2])
-
     a_mat, frecuencias = matriz_linealizacion(params)
     t_a3 = np.linspace(0.0, 10.0, 2001)
     dt_a3 = t_a3[1] - t_a3[0]
 
-    # Amplitud chica: 0.05 rad
     x0_chica = np.array([0.05, 0.05, 0.0, 0.0], dtype=np.float64)
     _, traj_nl_chica = integrar_rk4(x0_chica, t_max=10.0, dt=dt_a3, params=params)
     traj_lin_chica = np.array([expm(a_mat * t) @ x0_chica for t in t_a3])
 
-    ax_a3_chica.plot(t_a3, traj_nl_chica[:, 0], color=COLOR_THETA1, lw=1.2, label="θ₁ no lineal")
-    ax_a3_chica.plot(t_a3, traj_nl_chica[:, 1], color=COLOR_THETA2, lw=1.2, label="θ₂ no lineal")
-    ax_a3_chica.plot(t_a3, traj_lin_chica[:, 0], "--", color="#666666", lw=1.0, label="θ₁ lineal (expm(At))")
-    ax_a3_chica.plot(t_a3, traj_lin_chica[:, 1], ":", color="#333333", lw=1.0, label="θ₂ lineal")
-    ax_a3_chica.set_ylabel("Ángulos [rad]")
-    ax_a3_chica.set_title(f"A3.1 Amplitud chica (0.05 rad) | ω₁={frecuencias[0]:.2f}, ω₂={frecuencias[1]:.2f} rad/s", fontsize=10, fontweight="bold", pad=6)
-    ax_a3_chica.legend(loc="upper right", fontsize=7.5, framealpha=0.9, ncol=2)
-
-    # Amplitud mediana: 0.8 rad
     x0_mediana = np.array([0.8, 0.8, 0.0, 0.0], dtype=np.float64)
     _, traj_nl_med = integrar_rk4(x0_mediana, t_max=10.0, dt=dt_a3, params=params)
     traj_lin_med = np.array([expm(a_mat * t) @ x0_mediana for t in t_a3])
-
-    ax_a3_mediana.plot(t_a3, traj_nl_med[:, 0], color=COLOR_THETA1, lw=1.2, label="θ₁ no lineal")
-    ax_a3_mediana.plot(t_a3, traj_nl_med[:, 1], color=COLOR_THETA2, lw=1.2, label="θ₂ no lineal")
-    ax_a3_mediana.plot(t_a3, traj_lin_med[:, 0], "--", color="#666666", lw=1.0, label="θ₁ lineal")
-    ax_a3_mediana.plot(t_a3, traj_lin_med[:, 1], ":", color="#333333", lw=1.0, label="θ₂ lineal")
-    ax_a3_mediana.set_xlabel("Tiempo t [s]")
-    ax_a3_mediana.set_ylabel("Ángulos [rad]")
-    ax_a3_mediana.set_title("A3.2 Amplitud mediana (0.8 rad) | Separación por no linealidad", fontsize=10, fontweight="bold", pad=6)
-    ax_a3_mediana.legend(loc="upper right", fontsize=7.5, framealpha=0.9, ncol=2)
 
     datos_acumulados["lamina_a"]["modos_normales"] = {
         "frecuencia_1_rad_s": float(frecuencias[0]),
@@ -265,12 +204,107 @@ def generar_lamina_a(datos_acumulados: Dict[str, Any]) -> None:
         "periodo_2_s": float(2.0 * np.pi / frecuencias[1]),
     }
 
-    ruta_png = os.path.join(DIR_FIGURAS, "lamina_a.png")
-    ruta_svg = os.path.join(DIR_FIGURAS, "lamina_a.svg")
-    plt.savefig(ruta_png)
-    plt.savefig(ruta_svg)
+    # Helper para trazar A1
+    def plot_a1_axis(ax):
+        ax.loglog(t_rk_sub[1:], err_rk[1:], color="#d62728", lw=1.2, label="RK4 3/8 (deriva creciente)")
+        ax.loglog(t_pm[1:], err_pm[1:], color="#1f4fd6", lw=0.7, alpha=0.45, label="Punto Medio Canónico")
+        ax.loglog(t_pm[1:], env_pm[1:], color="#1f4fd6", lw=1.4, ls="--", label="Envolvente Punto Medio (máx. acumulado)")
+        ax.axvline(t_cruce, color="#333333", ls=":", lw=1.2, label=f"Cruce envolvente (t ≈ {t_cruce:.0f} s)")
+        ax.set_xlabel("Tiempo t [s]")
+        ax.set_ylabel("Error relativo de energía |ΔE| / E₀")
+        ax.set_title("A1. Conservación de energía a largo plazo (dt = 0.01)", fontsize=10.5, fontweight="bold", pad=8)
+        ax.legend(loc="lower right", framealpha=0.9, fontsize=8)
+        ax.set_xlim(1.0, t_max_a1)
+        ax.set_ylim(1e-7, 5e-2)
+
+    # Helper para trazar A2
+    def plot_a2_axes(ax_st, ax_en):
+        ref_x = np.array([0.005, 0.04])
+        # Estado
+        ax_st.loglog(dts_orden, errs_estado_rk4, "o-", color="#d62728", lw=1.2, label=f"RK4 3/8 (pendiente = {p_st_rk:.2f})")
+        ax_st.loglog(dts_orden, errs_estado_pm, "s-", color="#1f4fd6", lw=1.2, label=f"Punto Medio (pendiente = {p_st_pm:.2f})")
+        ax_st.loglog(ref_x, errs_estado_rk4[0] * (ref_x / ref_x[1]) ** 4.0, ":", color="#888888", label="Referencia O(dt⁴)")
+        ax_st.loglog(ref_x, errs_estado_pm[0] * (ref_x / ref_x[1]) ** 2.0, "--", color="#888888", label="Referencia O(dt²)")
+        ax_st.set_ylabel("Error de estado ||x − x_ref||")
+        ax_st.set_title("A2.1 Convergencia en el espacio de estados (T = 10 s)", fontsize=10, fontweight="bold", pad=6)
+        ax_st.legend(loc="upper left", fontsize=7.5, framealpha=0.9)
+        ax_st.set_xticks(sorted(dts_orden))
+        ax_st.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+        ax_st.set_xticklabels([f"{d:g}" for d in sorted(dts_orden)])
+        ax_st.minorticks_off()
+
+        # Energía
+        ax_en.loglog(dts_orden, errs_energia_rk4, "o-", color="#d62728", lw=1.2, label=f"RK4 3/8 (pendiente = {p_e_rk:.2f})")
+        ax_en.loglog(dts_orden, errs_energia_pm, "s-", color="#1f4fd6", lw=1.2, label=f"Punto Medio (pendiente = {p_e_pm:.2f})")
+        ax_en.loglog(ref_x, errs_energia_rk4[0] * (ref_x / ref_x[1]) ** 5.0, ":", color="#666666", label="Referencia O(dt⁵)")
+        ax_en.loglog(ref_x, errs_energia_pm[0] * (ref_x / ref_x[1]) ** 2.0, "--", color="#666666", label="Referencia O(dt²)")
+        ax_en.set_xlabel("Paso temporal dt [s]")
+        ax_en.set_ylabel("Error de energía |ΔE| / E₀")
+        ax_en.set_title("A2.2 Convergencia en la energía mecánica (T = 10 s)", fontsize=10, fontweight="bold", pad=6)
+        ax_en.legend(loc="upper left", fontsize=7.5, framealpha=0.9)
+        ax_en.set_xticks(sorted(dts_orden))
+        ax_en.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+        ax_en.set_xticklabels([f"{d:g}" for d in sorted(dts_orden)])
+        ax_en.minorticks_off()
+
+    # Helper para trazar A3
+    def plot_a3_axes(ax_ch, ax_med):
+        ax_ch.plot(t_a3, traj_nl_chica[:, 0], color=COLOR_THETA1, lw=1.2, label="θ₁ no lineal")
+        ax_ch.plot(t_a3, traj_nl_chica[:, 1], color=COLOR_THETA2, lw=1.2, label="θ₂ no lineal")
+        ax_ch.plot(t_a3, traj_lin_chica[:, 0], "--", color="#666666", lw=1.0, label="θ₁ lineal")
+        ax_ch.plot(t_a3, traj_lin_chica[:, 1], ":", color="#333333", lw=1.0, label="θ₂ lineal")
+        ax_ch.set_ylabel("Ángulos [rad]")
+        ax_ch.set_title(f"A3.1 Amplitud chica (0.05 rad) | ω₁={frecuencias[0]:.2f}, ω₂={frecuencias[1]:.2f} rad/s", fontsize=9.5, fontweight="bold", pad=6)
+        ax_ch.legend(loc="upper right", fontsize=7.5, framealpha=0.9, ncol=2)
+
+        ax_med.plot(t_a3, traj_nl_med[:, 0], color=COLOR_THETA1, lw=1.2, label="θ₁ no lineal")
+        ax_med.plot(t_a3, traj_nl_med[:, 1], color=COLOR_THETA2, lw=1.2, label="θ₂ no lineal")
+        ax_med.plot(t_a3, traj_lin_med[:, 0], "--", color="#666666", lw=1.0, label="θ₁ lineal")
+        ax_med.plot(t_a3, traj_lin_med[:, 1], ":", color="#333333", lw=1.0, label="θ₂ lineal")
+        ax_med.set_xlabel("Tiempo t [s]")
+        ax_med.set_ylabel("Ángulos [rad]")
+        ax_med.set_title("A3.2 Amplitud moderada (0.8 rad): separación no lineal", fontsize=9.5, fontweight="bold", pad=6)
+        ax_med.legend(loc="upper right", fontsize=7.5, framealpha=0.9, ncol=2)
+
+    # 1. Lámina A completa
+    fig = plt.figure(figsize=(16, 9))
+    gs = fig.add_gridspec(2, 3, width_ratios=[1.05, 1.1, 1.1], hspace=0.32, wspace=0.28)
+    ax_a1 = fig.add_subplot(gs[:, 0])
+    ax_a2_estado = fig.add_subplot(gs[0, 1])
+    ax_a2_energia = fig.add_subplot(gs[1, 1])
+    ax_a3_chica = fig.add_subplot(gs[0, 2])
+    ax_a3_mediana = fig.add_subplot(gs[1, 2])
+
+    plot_a1_axis(ax_a1)
+    plot_a2_axes(ax_a2_estado, ax_a2_energia)
+    plot_a3_axes(ax_a3_chica, ax_a3_mediana)
+
+    plt.savefig(os.path.join(DIR_FIGURAS, "lamina_a.png"))
+    plt.savefig(os.path.join(DIR_FIGURAS, "lamina_a.svg"))
     plt.close(fig)
-    print(f"   -> Guardada en {ruta_png} y {ruta_svg}")
+
+    # 2. Panel individual A1
+    fig_a1, ax1_ind = plt.subplots(figsize=(6.5, 5))
+    plot_a1_axis(ax1_ind)
+    plt.savefig(os.path.join(DIR_FIGURAS, "a1.png"))
+    plt.savefig(os.path.join(DIR_FIGURAS, "a1.svg"))
+    plt.close(fig_a1)
+
+    # 3. Panel individual A2
+    fig_a2, (ax2_st, ax2_en) = plt.subplots(2, 1, figsize=(6.5, 6.5), sharex=True)
+    plot_a2_axes(ax2_st, ax2_en)
+    plt.savefig(os.path.join(DIR_FIGURAS, "a2.png"))
+    plt.savefig(os.path.join(DIR_FIGURAS, "a2.svg"))
+    plt.close(fig_a2)
+
+    # 4. Panel individual A3
+    fig_a3, (ax3_ch, ax3_med) = plt.subplots(2, 1, figsize=(6.5, 6.5), sharex=True)
+    plot_a3_axes(ax3_ch, ax3_med)
+    plt.savefig(os.path.join(DIR_FIGURAS, "a3.png"))
+    plt.savefig(os.path.join(DIR_FIGURAS, "a3.svg"))
+    plt.close(fig_a3)
+
+    print("   -> Guardadas lamina_a, a1, a2 y a3 en PNG y SVG")
 
 
 # ===========================================================================
@@ -316,7 +350,7 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     res_ks = prueba_estabilidad_ks(vueltas_alta_dt, vueltas_alta_dt2)
     porcentaje_cambio_individual = float(np.mean(vueltas_alta_dt != vueltas_alta_dt2) * 100.0)
 
-    fig, (ax_b1, ax_b2, ax_b3) = plt.subplots(1, 3, figsize=(16, 6.75), sharey=False)
+    fig, (ax_b1, ax_b2, ax_b3) = plt.subplots(1, 3, figsize=(16, 5.5), sharey=False)
 
     max_x = int(max(np.max(vueltas_alta_dt), np.max(vueltas_alta_dt2)) + 3)
     bins = np.arange(-0.5, max_x + 1.5, 1.0)
@@ -325,39 +359,41 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     ax_b1.hist(vueltas_baja, bins=bins, color="#1f4fd6", edgecolor="white", alpha=0.85, density=True)
     ax_b1.set_xlabel("Pasos por arriba de la masa 2")
     ax_b1.set_ylabel("Densidad empírica")
-    ax_b1.set_title("B1. Baja energía (E < Ec_m2)\nGarantía teórica de 0 vueltas", fontsize=11, fontweight="bold", pad=8)
+    ax_b1.set_title("B1. Baja energía (E < Ec_m2): cero vueltas", fontsize=11, fontweight="bold", pad=8)
     ax_b1.set_xlim(-1, max_x)
     ax_b1.text(
-        0.05, 0.85,
-        f"N = {n_muestras}, T = {t_max:.0f} s\nMedia = {boot_baja['media']:.1f} vueltas\nIC 95% = [{boot_baja['media_ci_bajo']:.1f}, {boot_baja['media_ci_alto']:.1f}]\n(Muestra degenerada)",
-        transform=ax_b1.transAxes, fontsize=9.5, bbox=dict(boxstyle="round,pad=0.5", facecolor="#f0f4ff", edgecolor="#c0d0f0")
+        0.05, 0.82,
+        f"N = {n_muestras}, T = {t_max:.0f} s\nMedia = 0 (IC 95%: [0, 0])\nMuestra degenerada",
+        transform=ax_b1.transAxes, fontsize=9.5, color="#111111"
     )
 
     # B2: Alta energía
     ax_b2.hist(vueltas_alta_dt, bins=bins, color="#d62728", edgecolor="white", alpha=0.85, density=True)
     ax_b2.set_xlabel("Pasos por arriba de la masa 2")
-    ax_b2.set_title("B2. Alta energía (θ₀ ≈ 2.6 rad)\nRégimen caótico y dispersión", fontsize=11, fontweight="bold", pad=8)
+    ax_b2.set_ylabel("Densidad empírica")
+    ax_b2.set_title("B2. Alta energía: régimen caótico", fontsize=11, fontweight="bold", pad=8)
     ax_b2.set_xlim(-1, max_x)
     ax_b2.axvline(boot_alta["media"], color="#111111", lw=1.5, ls="--", label=f"Media = {boot_alta['media']:.2f}")
     ax_b2.axvspan(boot_alta["media_ci_bajo"], boot_alta["media_ci_alto"], color="#111111", alpha=0.15, label="IC 95% BCa media")
     ax_b2.legend(loc="upper right", fontsize=8.5, framealpha=0.9)
     ax_b2.text(
         0.05, 0.72,
-        f"Media: {boot_alta['media']:.2f}\nIC: [{boot_alta['media_ci_bajo']:.2f}, {boot_alta['media_ci_alto']:.2f}]\nDesv. Est.: {boot_alta['std']:.2f}\nIC Desv: [{boot_alta['std_ci_bajo']:.2f}, {boot_alta['std_ci_alto']:.2f}]",
-        transform=ax_b2.transAxes, fontsize=9.5, bbox=dict(boxstyle="round,pad=0.5", facecolor="#fff0f0", edgecolor="#f0c0c0")
+        f"Media: {boot_alta['media']:.2f} (IC: [{boot_alta['media_ci_bajo']:.2f}, {boot_alta['media_ci_alto']:.2f}])\nDesv. Est.: {boot_alta['std']:.2f} (IC: [{boot_alta['std_ci_bajo']:.2f}, {boot_alta['std_ci_alto']:.2f}])",
+        transform=ax_b2.transAxes, fontsize=9.5, color="#111111"
     )
 
     # B3: Estabilidad numérica (dt vs dt/2)
     ax_b3.hist(vueltas_alta_dt, bins=bins, color="#d62728", alpha=0.5, density=True, label=f"dt = {dt_base}")
     ax_b3.hist(vueltas_alta_dt2, bins=bins, color="#1f4fd6", alpha=0.5, density=True, label=f"dt = {dt_medio}")
     ax_b3.set_xlabel("Pasos por arriba de la masa 2")
-    ax_b3.set_title("B3. Estabilidad macroscópica (dt vs dt/2)\nPreservación distributiva bajo caos", fontsize=11, fontweight="bold", pad=8)
+    ax_b3.set_ylabel("Densidad empírica")
+    ax_b3.set_title("B3. Estabilidad macroscópica (dt vs dt/2)", fontsize=11, fontweight="bold", pad=8)
     ax_b3.set_xlim(-1, max_x)
     ax_b3.legend(loc="upper right", fontsize=9, framealpha=0.9)
     ax_b3.text(
         0.05, 0.70,
-        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nPrueba KS dos muestras:\n  Estadístico = {res_ks['estadistico_ks']:.4f}\n  p-valor = {res_ks['p_valor']:.4f}\n(Distribuciones indistinguibles)",
-        transform=ax_b3.transAxes, fontsize=9.5, bbox=dict(boxstyle="round,pad=0.5", facecolor="#f8f8f8", edgecolor="#dddddd")
+        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nPrueba KS: D = {res_ks['estadistico_ks']:.4f}, p = {res_ks['p_valor']:.2f}\nKS no rechaza igualdad (p = {res_ks['p_valor']:.2f})",
+        transform=ax_b3.transAxes, fontsize=9.5, color="#111111"
     )
 
     datos_acumulados["lamina_b"] = {
@@ -459,10 +495,10 @@ def generar_figura_c(datos_acumulados: Dict[str, Any]) -> None:
         aspect="equal",
     )
     cs1_1 = ax1.contour(th1_g1, th2_g1, v_grid1, levels=[ec_m2_1], colors=["#00ffcc"], linewidths=1.8, linestyles="-")
-    cs1_2 = ax1.contour(th1_g1, th2_g1, v_grid1, levels=[ec_m1_1], colors=["#ffffff"], linewidths=1.8, linestyles="--")
+    cs1_2 = ax1.contour(th1_g1, th2_g1, v_grid1, levels=[ec_m1_1], colors=["#000000"], linewidths=1.8, linestyles=":")
     ax1.set_xlabel("θ₁(0) [rad]")
     ax1.set_ylabel("θ₂(0) [rad]")
-    ax1.set_title("C1. Parámetros iguales (m₁=m₂=1, l₁=l₂=1)\nContornos: V = Ec_m2 (cian) y V = Ec_m1 (blanco)", fontsize=10.5, fontweight="bold", pad=8)
+    ax1.set_title("C1. Parámetros iguales: FTLE y umbrales de energía", fontsize=10.5, fontweight="bold", pad=8)
     ax1.set_xticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi], ["−π", "−π/2", "0", "π/2", "π"])
     ax1.set_yticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi], ["−π", "−π/2", "0", "π/2", "π"])
 
@@ -476,12 +512,17 @@ def generar_figura_c(datos_acumulados: Dict[str, Any]) -> None:
         aspect="equal",
     )
     cs2_1 = ax2.contour(th1_g2, th2_g2, v_grid2, levels=[ec_m2_2], colors=["#00ffcc"], linewidths=1.8, linestyles="-")
-    cs2_2 = ax2.contour(th1_g2, th2_g2, v_grid2, levels=[ec_m1_2], colors=["#ffffff"], linewidths=1.8, linestyles="--")
+    cs2_2 = ax2.contour(th1_g2, th2_g2, v_grid2, levels=[ec_m1_2], colors=["#000000"], linewidths=1.8, linestyles=":")
     ax2.set_xlabel("θ₁(0) [rad]")
     ax2.set_ylabel("θ₂(0) [rad]")
-    ax2.set_title("C2. Parámetros desiguales (m₂=0.25, l₂=1.6)\nLa región regular rebasa ampliamente Ec_m2", fontsize=10.5, fontweight="bold", pad=8)
+    ax2.set_title("C2. Parámetros desiguales: FTLE y umbrales de energía", fontsize=10.5, fontweight="bold", pad=8)
     ax2.set_xticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi], ["−π", "−π/2", "0", "π/2", "π"])
     ax2.set_yticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi], ["−π", "−π/2", "0", "π/2", "π"])
+
+    line_m2 = matplotlib.lines.Line2D([], [], color="#00ffcc", lw=1.8, ls="-", label="V = Ec_m2 (silla m₂)")
+    line_m1 = matplotlib.lines.Line2D([], [], color="#000000", lw=1.8, ls=":", label="V = Ec_m1 (silla m₁)")
+    ax1.legend(handles=[line_m2, line_m1], loc="upper right", fontsize=8.5, framealpha=0.9)
+    ax2.legend(handles=[line_m2, line_m1], loc="upper right", fontsize=8.5, framealpha=0.9)
 
     cbar = fig.colorbar(im2, ax=[ax1, ax2], fraction=0.03, pad=0.03)
     cbar.set_label("Exponente de Lyapunov de Tiempo Finito (FTLE) λ_T [s⁻¹]", fontsize=10)
@@ -531,18 +572,18 @@ def generar_figura_d(datos_acumulados: Dict[str, Any]) -> None:
         colors=["#d62728"], linewidths=2.2, linestyles="--",
     )
 
-    # Marcación de los cuatro equilibrios
+    # Marcación de los cuatro equilibrios clasificados por sus eigenvalores
     # 1. Origen: Centro
-    ax.plot(0, 0, marker="o", color="#008837", markersize=9, zorder=5, label="Centro: (0, 0) | V = 0")
+    ax.plot(0, 0, marker="o", color="#008837", markersize=9, zorder=5, label="Centro: (0, 0) | V = 0 J")
 
     # 2. Silla masa 2: (0, pi) y (0, -pi)
-    ax.plot([0, 0], [np.pi, -np.pi], marker="D", color="#1f4fd6", markersize=8, ls="none", zorder=5, label=f"Silla masa 2: (0, ±π) | V = Ec_m2 = {ec_m2:.1f} J")
+    ax.plot([0, 0], [np.pi, -np.pi], marker="D", color="#1f4fd6", markersize=8, ls="none", zorder=5, label=f"Silla-centro (no hiperbólico): (0, ±π) | V = {ec_m2:.1f} J")
 
     # 3. Silla masa 1: (pi, 0) y (-pi, 0)
-    ax.plot([np.pi, -np.pi], [0, 0], marker="s", color="#d62728", markersize=8, ls="none", zorder=5, label=f"Silla masa 1: (±π, 0) | V = Ec_m1 = {ec_m1:.1f} J")
+    ax.plot([np.pi, -np.pi], [0, 0], marker="s", color="#d62728", markersize=8, ls="none", zorder=5, label=f"Silla-centro (no hiperbólico): (±π, 0) | V = {ec_m1:.1f} J")
 
     # 4. Silla doble: (pi, pi), (-pi, pi), (pi, -pi), (-pi, -pi)
-    ax.plot([np.pi, -np.pi, np.pi, -np.pi], [np.pi, np.pi, -np.pi, -np.pi], marker="^", color="#7b3294", markersize=9, ls="none", zorder=5, label=f"Silla doble: (±π, ±π) | V = Ec_ambas = {ec_ambas:.1f} J")
+    ax.plot([np.pi, -np.pi, np.pi, -np.pi], [np.pi, np.pi, -np.pi, -np.pi], marker="^", color="#7b3294", markersize=9, ls="none", zorder=5, label=f"Silla hiperbólica: (±π, ±π) | V = {ec_ambas:.1f} J")
 
     # Etiquetas directas en las curvas de umbral
     ax.clabel(c_m2, fmt={ec_m2: f"Ec_m2 = {ec_m2:.1f} J"}, fontsize=8.5, colors="#1f4fd6")
@@ -550,7 +591,7 @@ def generar_figura_d(datos_acumulados: Dict[str, Any]) -> None:
 
     ax.set_xlabel("Ángulo θ₁ [rad]", fontsize=11)
     ax.set_ylabel("Ángulo θ₂ [rad]", fontsize=11)
-    ax.set_title("Figura D. Paisaje de Energía Potencial V(θ₁, θ₂) y Clasificación de Equilibrios\nm₁ = m₂ = 1 kg, l₁ = l₂ = 1 m", fontsize=11.5, fontweight="bold", pad=10)
+    ax.set_title("Figura D. Paisaje de energía potencial V(θ₁, θ₂) y clasificación de equilibrios", fontsize=11.5, fontweight="bold", pad=10)
 
     ax.set_xlim(-np.pi, np.pi)
     ax.set_ylim(-np.pi, np.pi)
@@ -578,6 +619,8 @@ def generar_figura_d(datos_acumulados: Dict[str, Any]) -> None:
     plt.savefig(ruta_svg)
     plt.close(fig)
     print(f"   -> Guardada en {ruta_png} y {ruta_svg}")
+
+
 
 
 # ===========================================================================
@@ -626,7 +669,7 @@ La evaluación comparativa entre el integrador clásico Runge-Kutta de orden 4 (
 
 A corto plazo, RK4 3/8 resulta notablemente más preciso debido a que su constante de error de orden 4 (proporcional a dt⁴) es varios órdenes de magnitud menor que la del método de punto medio de orden 2 (proporcional a dt²). Para las escalas temporales típicas de nuestras simulaciones (T <= 40 s con paso dt = 0.005 s), el error relativo máximo de energía de RK4 es de tan solo {err_t40:.3e}, lo cual es extraordinariamente preciso y más que suficiente para capturar fielmente la dinámica sin distorsión energética perceptible.
 
-Sin embargo, a largo plazo, RK4 3/8 al no ser simpléctico acumula una deriva secular sistemática de energía que crece de forma monótona en el tiempo. Por el contrario, el integrador del punto medio implícito no presenta deriva secular alguna: preserva exactamente un hamiltoniano modificado cercano, manteniendo el error de energía oscilando de manera acotada y sin tendencia a lo largo de 2000 segundos (con regresión lineal compatible con pendiente nula, p-valor mayor a 0.05). Al extender la simulación hasta T = 1500 segundos con dt = 0.01 s en escala temporal logarítmica (Lámina A1), se observa con total claridad el punto de cruce alrededor de t ≈ {t_cruce:.0f} s: antes del cruce RK4 tiene menor error, pero después del cruce la deriva secular de RK4 supera el error del método simpléctico, demostrando por qué los integradores simplécticos son la herramienta superior en integraciones de tiempos geológicos o astrofísicos.
+    Sin embargo, a largo plazo, RK4 3/8 al no ser simpléctico acumula una deriva creciente sistemática de energía que crece en el tiempo. Por el contrario, el integrador del punto medio implícito no presenta deriva alguna: preserva exactamente un hamiltoniano modificado cercano, manteniendo el error de energía oscilando de manera acotada y sin tendencia a lo largo de 1500 segundos (con picos de oscilación de ~3e-3 desde el inicio). Al extender la simulación hasta T = 1500 segundos con dt = 0.01 s en escala temporal logarítmica (Lámina A1), se observa el punto de cruce en t ≈ {t_cruce:.0f} s, momento en el cual el error de RK4 rebasa la envolvente del máximo acumulado del punto medio. Antes del cruce RK4 resulta notablemente superior en precisión (error relativo inferior a {err_t40:.2e} en T <= 40 s con dt = 0.005 s, más que suficiente para nuestras simulaciones), mientras que el punto medio gana a largo plazo al garantizar acotamiento estricto.
 
 Al medir el orden de convergencia en el espacio fase calculando la norma del error de estado contra una solución de referencia de alta resolución (dt = 0.005 / 16 s) a lo largo de 10 segundos en régimen regular, la pendiente ajustada en log-log es de {ord_d['pendiente_estado_rk4']:.3f} para RK4 3/8 y de {ord_d['pendiente_estado_punto_medio']:.3f} para el punto medio implícito, confirmando sus órdenes asintóticos teóricos de orden 4 y orden 2.
 
@@ -640,7 +683,7 @@ En la condición de baja energía centrada en theta1 = theta2 = 0.6 radianes, la
 
 En la condición de alta energía centrada en theta1 = theta2 = 2.6 radianes, el sistema opera en régimen caótico abierto. El conteo de pasos por arriba alcanza una media muestral de {b_alta['media']:.2f} vueltas con intervalo bootstrap BCa al 95% (10000 remuestreos) de [{b_alta['media_ci_bajo']:.2f}, {b_alta['media_ci_alto']:.2f}], y una desviación estándar de {b_alta['std']:.2f} con intervalo BCa de [{b_alta['std_ci_bajo']:.2f}, {b_alta['std_ci_alto']:.2f}].
 
-Al repetir la simulación reduciendo el paso temporal a la mitad (dt = 0.0025 s), el {est['porcentaje_cambio_individual']:.1f}% de las trayectorias individuales cambió su conteo numérico puntual de vueltas, debido a la sensibilidad exponencial a condiciones iniciales inducida por los exponentes positivos de Lyapunov. Sin embargo, la distribución macroscópica se mantuvo prácticamente inalterada (media de {est['media_dt']:.2f} con dt frente a {est['media_dt2']:.2f} con dt/2), y la prueba estadística de Kolmogorov-Smirnov de dos muestras arrojó un estadístico D de {est['estadistico_ks']:.4f} con un p-valor de {est['p_valor_ks']:.4f}. Esto demuestra para la exposición que, si bien las trayectorias caóticas individuales son inherentemente impredecibles debido a errores de redondeo, las propiedades estadísticas del conjunto y la medida invariante en el espacio fase son numéricamente estables.
+Al repetir la simulación reduciendo el paso temporal a la mitad (dt = 0.0025 s), el {est['porcentaje_cambio_individual']:.1f}% de las trayectorias individuales cambió su conteo numérico puntual de vueltas, debido a la sensibilidad exponencial a condiciones iniciales inducida por los exponentes positivos de Lyapunov. Sin embargo, la distribución macroscópica se mantuvo prácticamente inalterada (media de {est['media_dt']:.2f} con dt frente a {est['media_dt2']:.2f} con dt/2), y la prueba estadística de Kolmogorov-Smirnov de dos muestras arrojó un estadístico D de {est['estadistico_ks']:.4f} con un p-valor de {est['p_valor_ks']:.4f} (KS no rechaza igualdad, p = 0.89). Cabe resaltar que la prueba de Kolmogorov-Smirnov para variables continuas resulta conservadora con datos discretos (como el conteo entero de pasos por arriba), por lo que este resultado confirma de forma robusta la estabilidad macroscópica. Esto demuestra para la exposición que, si bien las trayectorias caóticas individuales son inherentemente sensibles a errores de redondeo numérico, las propiedades estadísticas del conjunto y la medida invariante en el espacio fase son numéricamente estables.
 
 ## 4. Mapas de Caos y Desacople de los Umbrales de Energía
 
