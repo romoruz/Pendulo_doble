@@ -1,0 +1,23 @@
+# Entorno virtual
+.venv/
+venv/
+ENV/
+
+# Python cache y bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs y SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (por si acaso)
+node_modules/
