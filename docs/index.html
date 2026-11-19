@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simulador de Péndulo Doble Conservativo | ITAM</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Columna Izquierda: Escenario de Simulación -->
+        <main id="stage-column">
+            <header id="stage-header">
+                <div>
+                    <span class="stage-title">Péndulo Doble Conservativo</span>
+                    <span class="stage-sub">Sistemas Dinámicos II &bull; ITAM</span>
+                </div>
+                <div class="mode-tabs">
+                    <button class="mode-tab-btn active" data-mode="normal">Normal</button>
+                    <button class="mode-tab-btn" data-mode="gemelo">Gemelo</button>
+                    <button class="mode-tab-btn" data-mode="lineal">Lineal</button>
+                    <button class="mode-tab-btn" data-mode="nube">Nube</button>
+                </div>
+            </header>
+
+            <div id="canvas-wrapper">
+                <canvas id="sim-canvas"></canvas>
+
+                <!-- Panel superpuesto de diagnóstico para modos especiales -->
+                <div id="overlay-panel">
+                    <h4 id="overlay-title">Diagnóstico</h4>
+                    <canvas id="overlay-canvas" width="250" height="120"></canvas>
+                </div>
+
+                <div id="drag-hint">Pausa la simulación para arrastrar las masas interactivamente</div>
+            </div>
+
+            <footer id="transport-bar">
+                <div class="btn-group">
+                    <button id="btn-play-pause" class="btn btn-primary" aria-label="Iniciar o pausar">Pausa</button>
+                    <button id="btn-step" class="btn" aria-label="Avanzar un paso">Paso</button>
+                    <button id="btn-reset" class="btn" aria-label="Reiniciar condición">Reiniciar</button>
+                    <label class="btn-group" style="margin-left: 8px;">
+                        <span style="font-size: 12px; font-weight: 600;">Velocidad:</span>
+                        <select id="select-speed" class="speed-select" aria-label="Velocidad de simulación">
+                            <option value="0.25">0.25&times;</option>
+                            <option value="0.5">0.5&times;</option>
+                            <option value="1.0" selected>1.0&times;</option>
+                            <option value="2.0">2.0&times;</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="btn-group">
+                    <label style="font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="check-trace" checked> Estela m₂
+                    </label>
+                    <button id="btn-presentation" class="btn" aria-label="Pantalla de exposición">Presentación</button>
+                </div>
+            </footer>
+        </main>
+
+        <!-- Columna Derecha: Métricas, Energía, Mapa de Caos y Controles -->
+        <aside id="sidebar-column">
+            <!-- 1. Energía y Umbrales Críticos -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <h3 class="panel-title">Energía y Umbrales de Silla</h3>
+                    <span id="label-delta-e" style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-blue); font-weight: 700;">|ΔE|/E₀: 0.0e+0</span>
+                </div>
+                <div id="energy-container">
+                    <div id="energy-bar-wrapper">
+                        <div id="energy-bar-kinetic"></div>
+                        <div id="energy-bar-potential"></div>
+                        <div id="line-ec-m2" class="threshold-line" style="background: #1f4fd6;">
+                            <span id="lbl-ec-m2" class="threshold-label" style="color: #1f4fd6;">Ec_m2</span>
+                        </div>
+                        <div id="line-ec-m1" class="threshold-line" style="background: #d62728;">
+                            <span id="lbl-ec-m1" class="threshold-label" style="color: #d62728;">Ec_m1</span>
+                        </div>
+                        <div id="line-ec-ambas" class="threshold-line" style="background: #7b3294;">
+                            <span id="lbl-ec-ambas" class="threshold-label" style="color: #7b3294;">Ec_ambas</span>
+                        </div>
+                    </div>
+                    <div id="energy-data">
+                        <div class="data-row">
+                            <span class="data-label">Energía Total E:</span>
+                            <span id="val-energy-total" class="data-val">0.00 J</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Cinética T:</span>
+                            <span id="val-energy-kinetic" class="data-val" style="color: var(--accent-red);">0.00 J</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Potencial V:</span>
+                            <span id="val-energy-potential" class="data-val" style="color: var(--accent-blue);">0.00 J</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Tiempo t:</span>
+                            <span id="val-time" class="data-val">0.00 s</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Vueltas Masa 2:</span>
+                            <span id="val-flips-m2" class="data-val">0</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Vueltas Masa 1:</span>
+                            <span id="val-flips-m1" class="data-val">0</span>
+                        </div>
+                        <div id="regime-badge">Evaluando régimen...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Mapa de Caos FTLE en Vivo -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <h3 class="panel-title">Mapa de Caos (FTLE)</h3>
+                    <button id="btn-recalc-map" class="btn" style="min-height: 28px; padding: 2px 8px; font-size: 11px;">Recalcular</button>
+                </div>
+                <div id="chaos-map-container">
+                    <div id="chaos-map-canvas-wrapper">
+                        <canvas id="chaos-canvas" width="200" height="200"></canvas>
+                        <div id="chaos-target-marker"></div>
+                    </div>
+                    <p class="chaos-map-sub">
+                        Toca el plano (θ₁, θ₂) para fijar la condición inicial.<br>
+                        <em>Contornos: Ec_m2 (cian), Ec_m1 (negro/blanco).</em>
+                    </p>
+                </div>
+            </section>
+
+            <!-- 3. Parámetros Físicos y Condiciones Iniciales -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <h3 class="panel-title">Parámetros del Sistema</h3>
+                </div>
+                <div class="control-grid">
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Longitud l₁:</span>
+                            <span id="lbl-l1">1.00 m</span>
+                        </div>
+                        <input type="range" id="slider-l1" class="control-slider" min="0.2" max="2.0" step="0.05" value="1.0">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Longitud l₂:</span>
+                            <span id="lbl-l2">1.00 m</span>
+                        </div>
+                        <input type="range" id="slider-l2" class="control-slider" min="0.2" max="2.0" step="0.05" value="1.0">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Masa m₁:</span>
+                            <span id="lbl-m1">1.0 kg</span>
+                        </div>
+                        <input type="range" id="slider-m1" class="control-slider" min="0.1" max="20.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Masa m₂:</span>
+                            <span id="lbl-m2">1.0 kg</span>
+                        </div>
+                        <input type="range" id="slider-m2" class="control-slider" min="0.1" max="20.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Ángulo θ₁(0):</span>
+                            <span id="lbl-th1">45°</span>
+                        </div>
+                        <input type="range" id="slider-th1" class="control-slider" min="-180" max="180" step="1" value="45">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Ángulo θ₂(0):</span>
+                            <span id="lbl-th2">45°</span>
+                        </div>
+                        <input type="range" id="slider-th2" class="control-slider" min="-180" max="180" step="1" value="45">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Velocidad ω₁(0):</span>
+                            <span id="lbl-w1">0.0 rad/s</span>
+                        </div>
+                        <input type="range" id="slider-w1" class="control-slider" min="-10" max="10" step="0.1" value="0">
+                    </div>
+                    <div class="control-item">
+                        <div class="control-label-row">
+                            <span>Velocidad ω₂(0):</span>
+                            <span id="lbl-w2">0.0 rad/s</span>
+                        </div>
+                        <input type="range" id="slider-w2" class="control-slider" min="-10" max="10" step="0.1" value="0">
+                    </div>
+                    <div class="ratios-note">
+                        <strong>Cocientes adimensionales:</strong> m₂/m₁ = <span id="lbl-mu">1.00</span>, l₂/l₁ = <span id="lbl-lambda">1.00</span>.<br>
+                        <em>La topología adimensional del movimiento solo depende de estos dos valores.</em>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Parámetros Específicos del Modo Activo -->
+            <section id="mode-controls-section" class="panel-section" style="display: none;">
+                <div class="panel-header">
+                    <h3 class="panel-title" id="mode-controls-title">Controles del Modo</h3>
+                </div>
+                <div id="mode-controls-content"></div>
+            </section>
+
+            <!-- 5. Presets Teóricos y del Informe -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <h3 class="panel-title">Presets de Exposición</h3>
+                </div>
+                <div class="preset-buttons-grid">
+                    <button class="btn-preset" data-preset="cerca_origen">Cerca del Origen</button>
+                    <button class="btn-preset" data-preset="baja_energia">Baja Energía (0 vueltas)</button>
+                    <button class="btn-preset" data-preset="alta_energia">Alta Energía (Caos)</button>
+                    <button class="btn-preset" data-preset="caso_1_informe">Caso 1 Informe</button>
+                    <button class="btn-preset" data-preset="caso_2_informe">Caso 2 Informe</button>
+                    <button class="btn-preset" data-preset="modo_1">Modo Normal 1 (En fase)</button>
+                    <button class="btn-preset" data-preset="modo_2">Modo Normal 2 (Contrafase)</button>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <!-- Scripts locales sin dependencias externas -->
+    <script src="physics.js"></script>
+    <script src="presets.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

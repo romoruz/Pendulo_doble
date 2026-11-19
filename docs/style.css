@@ -1,0 +1,519 @@
+/* ==========================================================================
+   Estilos del Simulador de Péndulo Doble Conservativo
+   Estética de herramienta de laboratorio sobria, limpia y de alto contraste.
+   Optimizado para Safari iPad en horizontal, proyector (1920x1080) y desktop.
+   ========================================================================== */
+
+:root {
+    --bg-color: #ffffff;
+    --text-color: #111111;
+    --text-muted: #555555;
+    --border-color: #d0d0d0;
+    --border-dark: #333333;
+    --panel-bg: #fafafa;
+    --accent-blue: #1f4fd6;
+    --accent-red: #d62728;
+    --accent-green: #008837;
+    --touch-min: 44px;
+    --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "SF Mono", Monaco, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-stack);
+    font-size: 14px;
+    line-height: 1.4;
+    overflow-x: hidden;
+}
+
+/* Contenedor principal en dos columnas */
+#app-container {
+    display: flex;
+    flex-direction: row;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   Columna Izquierda: Escenario de Simulación y Visualización
+   ========================================================================== */
+#stage-column {
+    flex: 1 1 65%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100vh;
+    background: #ffffff;
+    border-right: 1px solid var(--border-color);
+    position: relative;
+}
+
+/* Barra superior del escenario */
+#stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.stage-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text-color);
+}
+
+.stage-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 8px;
+}
+
+/* Selector de modos */
+.mode-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f0f0f0;
+    padding: 2px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.mode-tab-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.mode-tab-btn.active {
+    background: #ffffff;
+    color: var(--accent-blue);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+/* Área central interactiva de dibujo */
+#canvas-wrapper {
+    flex: 1 1 auto;
+    position: relative;
+    width: 100%;
+    min-height: 0;
+    background: #ffffff;
+    overflow: hidden;
+    touch-action: none; /* Deshabilita gestos del navegador para arrastre suave */
+}
+
+#sim-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Mini gráficas superpuestas para modos especiales (Gemelo / Nube) */
+#overlay-panel {
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    display: none;
+    z-index: 10;
+    max-width: 280px;
+}
+
+#overlay-panel.visible {
+    display: block;
+}
+
+#overlay-panel h4 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+#overlay-canvas {
+    width: 250px;
+    height: 120px;
+    display: block;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+}
+
+/* Rótulo de arrastre interactivo */
+#drag-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.85);
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid #e0e0e0;
+    pointer-events: none;
+}
+
+/* Barra inferior de transporte */
+#transport-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #ffffff;
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.btn-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn {
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    padding: 8px 16px;
+    border: 1px solid var(--border-dark);
+    background: #ffffff;
+    color: var(--text-color);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.btn:active {
+    background: #e8e8e8;
+}
+
+.btn-primary {
+    background: var(--text-color);
+    color: #ffffff;
+    border-color: var(--text-color);
+}
+
+.btn-primary:active {
+    background: #333333;
+}
+
+.speed-select {
+    min-height: var(--touch-min);
+    padding: 6px 10px;
+    border: 1px solid var(--border-dark);
+    border-radius: 4px;
+    background: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   Columna Derecha: Controles, Energía y Mapa de Caos
+   ========================================================================== */
+#sidebar-column {
+    flex: 0 0 35%;
+    max-width: 480px;
+    min-width: 320px;
+    height: 100vh;
+    background: var(--panel-bg);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Secciones plegables / modulares */
+.panel-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: #ffffff;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    color: var(--text-color);
+}
+
+/* Sección de Energía y Umbrales */
+#energy-container {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+#energy-bar-wrapper {
+    width: 60px;
+    height: 190px;
+    position: relative;
+    border: 1px solid var(--border-dark);
+    background: #ffffff;
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+#energy-bar-kinetic {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: var(--accent-red);
+    transition: height 0.05s linear;
+}
+
+#energy-bar-potential {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    background: var(--accent-blue);
+    transition: height 0.05s linear;
+}
+
+.threshold-line {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.threshold-label {
+    position: absolute;
+    right: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.85);
+    z-index: 6;
+    transform: translateY(-50%);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+#energy-data {
+    flex: 1;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    padding-bottom: 2px;
+    border-bottom: 1px dotted #e0e0e0;
+}
+
+.data-label {
+    color: var(--text-muted);
+}
+
+.data-val {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+#regime-badge {
+    margin-top: 8px;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #d0d0d0;
+    background: #f7f7f7;
+    line-height: 1.35;
+}
+
+/* Sección de Mapa de Caos (FTLE) */
+#chaos-map-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#chaos-map-canvas-wrapper {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
+    border: 1px solid var(--border-dark);
+    background: #111111;
+    border-radius: 2px;
+    cursor: crosshair;
+}
+
+#chaos-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#chaos-target-marker {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 0 4px #000000;
+}
+
+.chaos-map-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Sliders y Controles de Parámetros */
+.control-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.control-label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.control-slider {
+    width: 100%;
+    min-height: var(--touch-min);
+    cursor: pointer;
+    accent-color: var(--border-dark);
+}
+
+.ratios-note {
+    grid-column: 1 / -1;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: #f3f3f3;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid #e5e5e5;
+    margin-top: 4px;
+}
+
+/* Presets */
+.preset-buttons-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.btn-preset {
+    min-height: var(--touch-min);
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    background: #fbfbfb;
+    color: var(--text-color);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1.25;
+}
+
+.btn-preset:active {
+    background: #e8e8e8;
+    border-color: var(--border-dark);
+}
+
+/* ==========================================================================
+   Modo Presentación (Oculta controles y maximiza canvas)
+   ========================================================================== */
+body.presentation-mode #sidebar-column {
+    display: none;
+}
+
+body.presentation-mode #stage-column {
+    flex: 1 1 100%;
+    width: 100vw;
+}
+
+body.presentation-mode #stage-header {
+    padding: 10px 20px;
+}
+
+/* ==========================================================================
+   Responsividad iPad / Tablet
+   ========================================================================== */
+@media (max-width: 900px) {
+    #app-container {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+    #stage-column {
+        height: 60vh;
+        min-height: 420px;
+        flex: none;
+    }
+    #sidebar-column {
+        flex: none;
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+    }
+}

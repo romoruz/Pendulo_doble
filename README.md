@@ -27,10 +27,14 @@ pip install -r requirements.txt
 
 ## Ejecución de Pruebas Unitarias
 
-El proyecto cuenta con una suite completa de pruebas unitarias y de consistencia validadas con `pytest`:
+El proyecto cuenta con una suite completa de pruebas unitarias y de consistencia validadas con `pytest` y Node.js:
 
 ```bash
+# Suite completa de pruebas (Python y consistencia web)
 pytest -v
+
+# Validación directa de física en JavaScript contra Python (error < 1e-9)
+node docs/check_physics.js
 ```
 
 ---
@@ -41,6 +45,12 @@ Un solo comando reproduce todas las figuras en alta resolución (PNG y SVG), los
 
 ```bash
 python analysis/make_figures.py
+```
+
+Para actualizar los presets y archivos de referencia del simulador web:
+
+```bash
+python analysis/export_web.py
 ```
 
 ---
