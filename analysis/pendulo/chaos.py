@@ -99,29 +99,54 @@ def generar_malla_mapa_caos(
     return th1_grid, th2_grid, x0_batch
 
 
+def _ftle_worker(args):
+    """Función auxiliar para paralelización de lotes de FTLE."""
+    lote, t_max, dt, params = args
+    return calcular_ftle(lote, t_max=t_max, dt=dt, params=params)
+
+
 def calcular_mapa_ftle_malla(
     n_puntos: int = 200,
     t_max: float = 40.0,
     dt: float = 0.01,
     params: ParametrosPendulo = PARAMS_DEFECTO,
-    tamano_lote: int = 5000,
+    tamano_lote: int = 2500,
+    n_jobs: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calcula el mapa de FTLE sobre una malla (n_puntos x n_puntos) procesando por lotes para optimizar memoria.
+    """Calcula el mapa de FTLE sobre una malla (n_puntos x n_puntos) procesando por lotes.
+    
+    Aprovecha paralelismo multinúcleo en Linux para calcular la rejilla en pocos segundos.
     
     Retorna: (th1_grid, th2_grid, ftle_grid)
     """
+    import os
+    import multiprocessing as mp
+
     th1_grid, th2_grid, x0_batch = generar_malla_mapa_caos(n_puntos=n_puntos)
     n_total = x0_batch.shape[0]
-    ftle_vec = np.empty(n_total, dtype=np.float64)
 
-    for i in range(0, n_total, tamano_lote):
-        fin = min(i + tamano_lote, n_total)
-        ftle_vec[i:fin] = calcular_ftle(
-            x0_batch[i:fin],
-            t_max=t_max,
-            dt=dt,
-            params=params,
-        )
+    lotes = [
+        (x0_batch[i:min(i + tamano_lote, n_total)], t_max, dt, params)
+        for i in range(0, n_total, tamano_lote)
+    ]
+
+    if n_jobs is None or n_jobs <= 0:
+        n_jobs = min(8, os.cpu_count() or 1)
+
+    if n_jobs > 1 and hasattr(mp, "get_context"):
+        try:
+            ctx = mp.get_context("fork")
+            with ctx.Pool(processes=n_jobs) as pool:
+                resultados_lotes = pool.map(_ftle_worker, lotes)
+            ftle_vec = np.concatenate(resultados_lotes)
+        except Exception:
+            # Fallback seguro secuencial
+            resultados_lotes = [_ftle_worker(lote_args) for lote_args in lotes]
+            ftle_vec = np.concatenate(resultados_lotes)
+    else:
+        resultados_lotes = [_ftle_worker(lote_args) for lote_args in lotes]
+        ftle_vec = np.concatenate(resultados_lotes)
 
     ftle_grid = ftle_vec.reshape(n_puntos, n_puntos)
     return th1_grid, th2_grid, ftle_grid
+

@@ -1,0 +1,214 @@
+{
+  "timestamp": "2026-11-19 09:06:37",
+  "semilla": 20261119,
+  "equilibrios": {
+    "origen": {
+      "coord": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tipo": "centro",
+      "residual": 0.0,
+      "partes_reales": [
+        -2.683089598185821e-17,
+        -2.683089598185821e-17,
+        -2.565696497233373e-16,
+        -2.565696497233373e-16
+      ],
+      "partes_imaginarias": [
+        5.787351298036058,
+        -5.787351298036058,
+        2.3971993978640875,
+        -2.3971993978640875
+      ]
+    },
+    "silla_pi_0": {
+      "coord": [
+        3.141592653589793,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tipo": "silla_mixta",
+      "residual": 3.3980115646680756e-15,
+      "partes_reales": [
+        -3.7247060312825577,
+        3.724706031282558,
+        5.586562819741104e-16,
+        5.586562819741104e-16
+      ],
+      "partes_imaginarias": [
+        0.0,
+        0.0,
+        3.7247060355929182,
+        -3.7247060355929182
+      ]
+    },
+    "silla_0_pi": {
+      "coord": [
+        0.0,
+        3.141592653589793,
+        0.0,
+        0.0
+      ],
+      "tipo": "silla_mixta",
+      "residual": 2.6863640149859143e-15,
+      "partes_reales": [
+        -3.724706031282552,
+        -4.718447854656915e-16,
+        -4.718447854656915e-16,
+        3.724706031282557
+      ],
+      "partes_imaginarias": [
+        0.0,
+        3.72470603559292,
+        -3.72470603559292,
+        0.0
+      ]
+    },
+    "silla_pi_pi": {
+      "coord": [
+        3.141592653589793,
+        3.141592653589793,
+        0.0,
+        0.0
+      ],
+      "tipo": "silla_doble_real",
+      "residual": 1.2013785099635535e-15,
+      "partes_reales": [
+        5.787351293300326,
+        2.397199395902485,
+        -5.787351293300325,
+        -2.3971993959024838
+      ],
+      "partes_imaginarias": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "lamina_a": {
+    "condicion_a1": [
+      2.6,
+      2.6,
+      0.0,
+      0.0
+    ],
+    "dt_a1": 0.005,
+    "t_max_a1": 200.0,
+    "deriva_final_rk4": 3.556231098255951e-05,
+    "deriva_max_rk4": 3.556231098255951e-05,
+    "error_max_punto_medio": 0.0011281520347486175,
+    "orden": {
+      "dts": [
+        0.04,
+        0.02,
+        0.01,
+        0.005
+      ],
+      "pendiente_estado_rk4": 3.9713791283347124,
+      "pendiente_estado_punto_medio": 2.0202332596197974,
+      "pendiente_energia_rk4": 4.927416534090073,
+      "pendiente_energia_punto_medio": 2.0063223340346394
+    },
+    "modos_normales": {
+      "frecuencia_1_rad_s": 2.3971993978640858,
+      "frecuencia_2_rad_s": 5.787351298036095,
+      "periodo_1_s": 2.6210524300890152,
+      "periodo_2_s": 1.0856754642338284
+    }
+  },
+  "lamina_b": {
+    "n_muestras": 1000,
+    "sigma_rad": 0.01,
+    "rho": 0.0,
+    "t_max_s": 30.0,
+    "dt_base_s": 0.005,
+    "dt_medio_s": 0.0025,
+    "baja_energia": {
+      "degenerada": true,
+      "media": 0.0,
+      "media_ci_bajo": 0.0,
+      "media_ci_alto": 0.0,
+      "std": 0.0,
+      "std_ci_bajo": 0.0,
+      "std_ci_alto": 0.0
+    },
+    "alta_energia": {
+      "degenerada": false,
+      "media": 15.87,
+      "media_ci_bajo": 15.653,
+      "media_ci_alto": 16.104,
+      "std": 3.6560178427445438,
+      "std_ci_bajo": 3.4380922165328522,
+      "std_ci_alto": 4.019212891241855
+    },
+    "estabilidad_numerica": {
+      "media_dt": 15.87,
+      "media_dt2": 15.88,
+      "porcentaje_cambio_individual": 87.5,
+      "estadistico_ks": 0.025999999999999995,
+      "p_valor_ks": 0.8881734182535203
+    }
+  },
+  "figura_c": {
+    "resolucion": [
+      200,
+      200
+    ],
+    "t_max_ftle_s": 40.0,
+    "dt_ftle_s": 0.01,
+    "parametros_iguales": {
+      "umbrales": {
+        "Ec_m2": 19.62,
+        "Ec_m1": 39.24,
+        "Ec_ambas": 58.86,
+        "primer_umbral": "Ec_m2",
+        "m2_l2": 1.0,
+        "m_total_l1": 2.0
+      },
+      "fraccion_caotica_bajo_07_ecm2": 0.0,
+      "fraccion_regular_bajo_07_ecm2": 0.9777536625067824,
+      "fraccion_intermedia_07_10_ecm2": 0.3183724832214765,
+      "fraccion_regular_entre_ecm2_ecm1": 0.050557428052890846,
+      "fraccion_cuasiregular_entre_ecm2_ecm1": 0.10396681358568836,
+      "fraccion_caotica_arriba_ecm1": 0.9975868725868726
+    },
+    "parametros_desiguales": {
+      "umbrales": {
+        "Ec_m2": 7.848000000000001,
+        "Ec_m1": 24.525000000000002,
+        "Ec_ambas": 32.373000000000005,
+        "primer_umbral": "Ec_m2",
+        "m2_l2": 0.4,
+        "m_total_l1": 1.25
+      },
+      "fraccion_regular_sobre_ecm2": 0.09486709440879927,
+      "fraccion_cuasiregular_sobre_ecm2": 0.15824276548382873
+    }
+  },
+  "secciones_poincare": {
+    "caso_1": {
+      "x0": [
+        0.2,
+        0.25,
+        0.0,
+        0.0
+      ],
+      "num_cruces": 457
+    },
+    "caso_2": {
+      "x0": [
+        3.0915926535897933,
+        3.0915926535897933,
+        0.0,
+        0.0
+      ],
+      "num_cruces": 459
+    }
+  }
+}
