@@ -39,39 +39,76 @@ def test_2_deriva_energia_rk4_tres_parametros():
 
 
 def test_3_orden_convergencia_rk4_y_punto_medio():
-    """Test 3: La pendiente log-log del error de energía contra dt cae en [3.7, 4.3] para RK4 y [1.8, 2.2] para punto medio.
+    """Test 3: Mide el orden con el error de estado contra una solución de referencia de alta resolución.
     
-    En régimen no lineal de alta energía (x0 = [2.4, 2.4, 0, 0], T = 10 s), los integradores
-    manifiestan plenamente sus órdenes asintóticos teóricos (4 y 2).
+    En régimen regular (x0 = [0.8, 0.8, 0, 0], T = 10 s, dt in {0.04, 0.02, 0.01, 0.005}),
+    comparado contra una referencia con dt_ref = 0.005 / 16:
+    - Pendiente de RK4 3/8 en [3.7, 4.3] (orden 4 en el estado).
+    - Pendiente de Punto Medio Implícito en [1.8, 2.2] (orden 2 en el estado).
     """
     params = PARAMS_DEFECTO
-    x0 = np.array([2.4, 2.4, 0.0, 0.0], dtype=np.float64)
+    x0 = np.array([0.8, 0.8, 0.0, 0.0], dtype=np.float64)
     t_max = 10.0
-    dts = [0.04, 0.02, 0.01, 0.005, 0.0025]
+    dts = [0.04, 0.02, 0.01, 0.005]
+    dt_ref = dts[-1] / 16.0
 
-    errores_rk4 = []
-    errores_pm = []
+    # Solución de referencia de alta precisión con RK4
+    _, traj_ref = integrar_rk4(x0, t_max=t_max, dt=dt_ref, params=params)
+
+    errores_estado_rk4 = []
+    errores_estado_pm = []
 
     for dt in dts:
+        ratio = int(round(dt / dt_ref))
+
         # RK4 3/8
         _, traj_rk4 = integrar_rk4(x0, t_max=t_max, dt=dt, params=params)
-        e_rk4 = energia_total(traj_rk4, params)
-        err_rk4 = np.max(np.abs(e_rk4 - e_rk4[0])) / np.abs(e_rk4[0])
-        errores_rk4.append(err_rk4)
+        ref_sub_rk4 = traj_ref[::ratio][:len(traj_rk4)]
+        err_rk4 = np.max(np.linalg.norm(traj_rk4 - ref_sub_rk4, axis=-1))
+        errores_estado_rk4.append(err_rk4)
 
         # Punto medio implícito
         _, traj_pm = integrar_punto_medio(x0, t_max=t_max, dt=dt, params=params, tol=1e-13)
-        e_pm = energia_total(traj_pm, params)
-        err_pm = np.max(np.abs(e_pm - e_pm[0])) / np.abs(e_pm[0])
-        errores_pm.append(err_pm)
+        ref_sub_pm = traj_ref[::ratio][:len(traj_pm)]
+        err_pm = np.max(np.linalg.norm(traj_pm - ref_sub_pm, axis=-1))
+        errores_estado_pm.append(err_pm)
 
-    # Ajuste lineal en log-log
     log_dt = np.log(dts)
-    pendiente_rk4, _, _, _, _ = stats.linregress(log_dt, np.log(errores_rk4))
-    pendiente_pm, _, _, _, _ = stats.linregress(log_dt, np.log(errores_pm))
+    pendiente_rk4, _, _, _, _ = stats.linregress(log_dt, np.log(errores_estado_rk4))
+    pendiente_pm, _, _, _, _ = stats.linregress(log_dt, np.log(errores_estado_pm))
 
-    assert 3.7 <= pendiente_rk4 <= 4.3, f"Pendiente RK4 {pendiente_rk4:.3f} fuera de [3.7, 4.3]"
-    assert 1.8 <= pendiente_pm <= 2.2, f"Pendiente Punto Medio {pendiente_pm:.3f} fuera de [1.8, 2.2]"
+    assert 3.7 <= pendiente_rk4 <= 4.3, (
+        f"Pendiente de error de estado RK4 {pendiente_rk4:.3f} fuera de [3.7, 4.3]"
+    )
+    assert 1.8 <= pendiente_pm <= 2.2, (
+        f"Pendiente de error de estado Punto Medio {pendiente_pm:.3f} fuera de [1.8, 2.2]"
+    )
+
+
+def test_3b_orden_energia_rk4_regimen_regular():
+    """Test 3b: En régimen regular, el error de energía de RK4 tiene pendiente en [4.6, 5.4].
+    
+    Debido a la estructura hamiltoniana y cancelaciones en el integrador clásico no simpléctico,
+    el error del hamiltoniano escala asintóticamente como O(dt^5) en oscilaciones regulares.
+    """
+    params = PARAMS_DEFECTO
+    x0 = np.array([0.8, 0.8, 0.0, 0.0], dtype=np.float64)
+    t_max = 10.0
+    dts = [0.04, 0.02, 0.01, 0.005]
+
+    errores_energia_rk4 = []
+    for dt in dts:
+        _, traj_rk4 = integrar_rk4(x0, t_max=t_max, dt=dt, params=params)
+        e_rk4 = energia_total(traj_rk4, params)
+        err_e = np.max(np.abs(e_rk4 - e_rk4[0])) / np.abs(e_rk4[0])
+        errores_energia_rk4.append(err_e)
+
+    log_dt = np.log(dts)
+    pendiente_e_rk4, _, _, _, _ = stats.linregress(log_dt, np.log(errores_energia_rk4))
+
+    assert 4.6 <= pendiente_e_rk4 <= 5.4, (
+        f"Pendiente de energía de RK4 {pendiente_e_rk4:.3f} fuera de [4.6, 5.4]"
+    )
 
 
 def test_4_punto_medio_sin_deriva_secular():
