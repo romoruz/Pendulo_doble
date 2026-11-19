@@ -115,6 +115,48 @@
     }
 
     /**
+     * Paso de integración RK4 clásico (regla de Simpson 1/6, 1/3, 1/3, 1/6)
+     * x_next = x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+     */
+    function pasoRK4Clasico(x, dt, p) {
+        var dt_2 = dt * 0.5;
+        var dt_6 = dt / 6.0;
+
+        var k1 = campoDerivadas(x, p);
+
+        var x2 = [
+            x[0] + dt_2 * k1[0],
+            x[1] + dt_2 * k1[1],
+            x[2] + dt_2 * k1[2],
+            x[3] + dt_2 * k1[3]
+        ];
+        var k2 = campoDerivadas(x2, p);
+
+        var x3 = [
+            x[0] + dt_2 * k2[0],
+            x[1] + dt_2 * k2[1],
+            x[2] + dt_2 * k2[2],
+            x[3] + dt_2 * k2[3]
+        ];
+        var k3 = campoDerivadas(x3, p);
+
+        var x4 = [
+            x[0] + dt * k3[0],
+            x[1] + dt * k3[1],
+            x[2] + dt * k3[2],
+            x[3] + dt * k3[3]
+        ];
+        var k4 = campoDerivadas(x4, p);
+
+        return [
+            x[0] + dt_6 * (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]),
+            x[1] + dt_6 * (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]),
+            x[2] + dt_6 * (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]),
+            x[3] + dt_6 * (k1[3] + 2.0 * k2[3] + 2.0 * k3[3] + k4[3])
+        ];
+    }
+
+    /**
      * Energía cinética T
      */
     function energiaCinetica(x, p) {
@@ -252,10 +294,144 @@
         ];
     }
 
+    /**
+     * Generador pseudoaleatorio Mulberry32 de 32 bits determinista y sembrable.
+     * Devuelve función rng() que entrega flotantes uniformes en [0, 1).
+     */
+    function mulberry32(seed) {
+        var s = seed | 0;
+        return function () {
+            s = (s + 0x6D2B79F5) | 0;
+            var t = Math.imul(s ^ (s >>> 15), 1 | s);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296.0;
+        };
+    }
+
+    /**
+     * Percentil por interpolación lineal (método 'linear' idéntico a numpy.percentile).
+     * arr debe estar ordenado ascendentemente. q in [0, 1].
+     */
+    function percentilLineal(arr, q) {
+        var n = arr.length;
+        if (n === 0) return 0;
+        if (n === 1) return arr[0];
+        var idx = (n - 1) * q;
+        var lo = Math.floor(idx);
+        var hi = Math.ceil(idx);
+        var weight = idx - lo;
+        return (1.0 - weight) * arr[lo] + weight * arr[hi];
+    }
+
+    /**
+     * Bootstrap no paramétrico percentil para media y desviación estándar muestral.
+     * datos: array numérico de tamaño N.
+     * B: número de remuestreos (por defecto 2000).
+     * rng: generador aleatorio uniforme [0, 1). Si es null/undefined, usa mulberry32(12345).
+     * confianza: nivel de confianza (por defecto 0.95).
+     */
+    function bootstrapPercentil(datos, B, rng, confianza) {
+        if (!datos || datos.length === 0) {
+            return {
+                media: 0, media_ci_bajo: 0, media_ci_alto: 0,
+                std: 0, std_ci_bajo: 0, std_ci_alto: 0
+            };
+        }
+        var N = datos.length;
+        B = B || 2000;
+        confianza = (confianza !== undefined) ? confianza : 0.95;
+        if (!rng) rng = mulberry32(12345);
+
+        var sum = 0;
+        for (var i = 0; i < N; i++) sum += datos[i];
+        var mediaObs = sum / N;
+
+        var sumSq = 0;
+        for (var i = 0; i < N; i++) {
+            var diff = datos[i] - mediaObs;
+            sumSq += diff * diff;
+        }
+        var stdObs = (N > 1) ? Math.sqrt(sumSq / (N - 1)) : 0;
+
+        if (stdObs === 0) {
+            return {
+                media: mediaObs, media_ci_bajo: mediaObs, media_ci_alto: mediaObs,
+                std: 0, std_ci_bajo: 0, std_ci_alto: 0
+            };
+        }
+
+        var mediasB = new Float64Array(B);
+        var stdsB = new Float64Array(B);
+        var bSample = new Float64Array(N);
+
+        for (var b = 0; b < B; b++) {
+            var sB = 0;
+            for (var j = 0; j < N; j++) {
+                var idx = Math.floor(rng() * N);
+                var val = datos[idx];
+                bSample[j] = val;
+                sB += val;
+            }
+            var mB = sB / N;
+            mediasB[b] = mB;
+
+            var sSqB = 0;
+            for (var j = 0; j < N; j++) {
+                var d = bSample[j] - mB;
+                sSqB += d * d;
+            }
+            stdsB[b] = (N > 1) ? Math.sqrt(sSqB / (N - 1)) : 0;
+        }
+
+        mediasB.sort();
+        stdsB.sort();
+
+        var alpha = 1.0 - confianza;
+        var qBajo = alpha * 0.5;
+        var qAlto = 1.0 - qBajo;
+
+        return {
+            media: mediaObs,
+            media_ci_bajo: percentilLineal(mediasB, qBajo),
+            media_ci_alto: percentilLineal(mediasB, qAlto),
+            std: stdObs,
+            std_ci_bajo: percentilLineal(stdsB, qBajo),
+            std_ci_alto: percentilLineal(stdsB, qAlto)
+        };
+    }
+
+    /**
+     * Intervalo de puntuación de Wilson para proporción binaria k/n sin corrección de continuidad.
+     * k: éxitos
+     * n: total de ensayos
+     * z: cuantil normal estándar (por defecto 1.959963984540054 para 95% de confianza)
+     */
+    function intervaloWilson(k, n, z) {
+        if (n <= 0) {
+            return { p: 0, bajo: 0, alto: 0 };
+        }
+        if (z === undefined || z === null) {
+            z = 1.959963984540054;
+        }
+        var p = k / n;
+        var z2 = z * z;
+        var denom = n + z2;
+        var pTilde = (k + 0.5 * z2) / denom;
+        var se = (z / denom) * Math.sqrt((k * (n - k) / n) + (z2 * 0.25));
+        var bajo = Math.max(0.0, pTilde - se);
+        var alto = Math.min(1.0, pTilde + se);
+        return {
+            p: p,
+            bajo: bajo,
+            alto: alto
+        };
+    }
+
     return {
         crearParametros: crearParametros,
         campoDerivadas: campoDerivadas,
         pasoRK4: pasoRK4,
+        pasoRK4Clasico: pasoRK4Clasico,
         energiaCinetica: energiaCinetica,
         energiaPotencial: energiaPotencial,
         energiaTotal: energiaTotal,
@@ -263,6 +439,10 @@
         indiceVuelta: indiceVuelta,
         posicionesCartesianas: posicionesCartesianas,
         linealizacion: linealizacion,
-        pasoLinealRK4: pasoLinealRK4
+        pasoLinealRK4: pasoLinealRK4,
+        mulberry32: mulberry32,
+        percentilLineal: percentilLineal,
+        bootstrapPercentil: bootstrapPercentil,
+        intervaloWilson: intervaloWilson
     };
 }));

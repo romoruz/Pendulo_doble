@@ -99,8 +99,22 @@ El orden de la exposición sigue estrictamente el índice del informe del equipo
 
 ---
 
+---
+
+## Generador Pseudoaleatorio Mulberry32 y Reproducibilidad
+
+Para garantizar reproducibilidad determinista en el exploratorio estocástico web y coincidencia exacta (< 1e-12) con Python, el simulador web (`docs/physics.js`) implementa el algoritmo **Mulberry32**:
+- Generador PRNG de 32 bits con periodo de $2^{32}$.
+- Estado interno entero de 32 bits con aritmética modular `| 0` y `Math.imul`.
+- Cada remuestreo bootstrap percentil ($B = 2000$) y el muestreo de condiciones iniciales correlacionadas en la pestaña Monte Carlo utilizan la semilla configurable (por defecto `20261119`).
+- La prueba unitaria `analysis/tests/test_stats_web.py` valida la coincidencia estricta bit a bit entre Python y JavaScript para remuestreos bootstrap y el intervalo de puntuación de Wilson.
+
+---
+
 ## Respaldo sin Internet para la Exposición
 
-1. **Simulador Web Local**: El archivo `docs/index.html` es una página web estática sin dependencias externas, sin CDNs ni llamadas de red. Puede abrirse directamente en cualquier navegador arrastrándolo o mediante la URI `file:///.../docs/index.html`.
-2. **Figuras Vectoriales y en Alta Definición**: Las carpetas `figures/` contienen tanto archivos PNG a 200 DPI como gráficos vectoriales SVG listos para proyectar sin pérdida de calidad.
-3. **Grabación de Pantalla**: En entornos Linux GNOME es posible iniciar una grabación local con `Ctrl+Shift+Alt+R`, o bien con herramientas como OBS Studio.
+1. **Simulador Web Local**: El archivo `docs/index.html` es una página web estática sin dependencias externas, sin CDNs ni llamadas de red. Puede abrirse directamente en cualquier navegador arrastrándolo o mediante la URI `file:///.../docs/index.html`. Incluye tema oscuro por defecto (conmutable a claro), rejilla de 4 gráficas 2×2 en vivo, mapa de caos adimensional invariante ante cambios de $g$, selector de integradores (RK4 3/8 y Clásico), y pestaña de Monte Carlo con comparativa A/B.
+2. **Capturas de Verificación Multirresolución**: En `docs/capturas/` se encuentran las capturas completas generadas en modo headless para proyector (1920×1080), laptop (1366×768) e iPad horizontal (1180×820) en temas claro y oscuro.
+3. **Figuras Vectoriales y en Alta Definición**: La carpeta `figures/` contiene tanto archivos PNG a 200 DPI como gráficos vectoriales SVG listos para proyectar sin pérdida de calidad.
+4. **Grabación de Pantalla**: En entornos Linux GNOME es posible iniciar una grabación local con `Ctrl+Shift+Alt+R`, o bien con herramientas como OBS Studio.
+

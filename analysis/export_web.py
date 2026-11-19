@@ -64,6 +64,24 @@ def generar_presets_js() -> None:
             "params": {"m1": 1.0, "m2": 1.0, "l1": 1.0, "l2": 1.0, "g": 9.81},
             "x0": PRESETS_CI["alta_energia"]["x0"],
         },
+        "pequenas_oscilaciones": {
+            "nombre": PRESETS_CI["pequenas_oscilaciones"]["nombre"],
+            "descripcion": PRESETS_CI["pequenas_oscilaciones"]["descripcion"],
+            "params": {"m1": 1.0, "m2": 1.0, "l1": 1.0, "l2": 1.0, "g": 9.81},
+            "x0": PRESETS_CI["pequenas_oscilaciones"]["x0"],
+        },
+        "cuasi_periodico": {
+            "nombre": PRESETS_CI["cuasi_periodico"]["nombre"],
+            "descripcion": PRESETS_CI["cuasi_periodico"]["descripcion"],
+            "params": {"m1": 1.0, "m2": 1.0, "l1": 1.0, "l2": 1.0, "g": 9.81},
+            "x0": PRESETS_CI["cuasi_periodico"]["x0"],
+        },
+        "caotico": {
+            "nombre": PRESETS_CI["caotico"]["nombre"],
+            "descripcion": PRESETS_CI["caotico"]["descripcion"],
+            "params": {"m1": 1.0, "m2": 1.0, "l1": 1.0, "l2": 1.0, "g": 9.81},
+            "x0": PRESETS_CI["caotico"]["x0"],
+        },
         "caso_1_informe": {
             "nombre": PRESETS_CI["caso_1_informe"]["nombre"],
             "descripcion": PRESETS_CI["caso_1_informe"]["descripcion"],

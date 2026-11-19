@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-19 09:40:14",
+  "timestamp": "2026-11-19 16:11:51",
   "semilla": 20261119,
   "equilibrios": {
     "origen": {
@@ -153,7 +153,9 @@
       "media_dt2": 15.88,
       "porcentaje_cambio_individual": 87.5,
       "estadistico_ks": 0.025999999999999995,
-      "p_valor_ks": 0.8881734182535203
+      "p_valor_asintotico": 0.8881734182535203,
+      "p_valor_permutacion": 0.6300739852029594,
+      "p_valor_ks": 0.6300739852029594
     }
   },
   "figura_c": {

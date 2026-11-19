@@ -6,223 +6,442 @@
     <title>Simulador de Péndulo Doble Conservativo | ITAM</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="theme-dark">
     <div id="app-container">
-        <!-- Columna Izquierda: Escenario de Simulación -->
-        <main id="stage-column">
-            <header id="stage-header">
-                <div>
-                    <span class="stage-title">Péndulo Doble Conservativo</span>
-                    <span class="stage-sub">Sistemas Dinámicos II &bull; ITAM</span>
-                </div>
-                <div class="mode-tabs">
-                    <button class="mode-tab-btn active" data-mode="normal">Normal</button>
-                    <button class="mode-tab-btn" data-mode="gemelo">Gemelo</button>
-                    <button class="mode-tab-btn" data-mode="lineal">Lineal</button>
-                    <button class="mode-tab-btn" data-mode="nube">Nube</button>
-                </div>
-            </header>
-
-            <div id="canvas-wrapper">
-                <canvas id="sim-canvas"></canvas>
-
-                <!-- Panel superpuesto de diagnóstico para modos especiales -->
-                <div id="overlay-panel">
-                    <h4 id="overlay-title">Diagnóstico</h4>
-                    <canvas id="overlay-canvas" width="250" height="120"></canvas>
-                </div>
-
-                <div id="drag-hint">Pausa la simulación para arrastrar las masas interactivamente</div>
+        <!-- Barra Superior Global -->
+        <header id="global-header">
+            <div class="brand-section">
+                <span class="brand-title">Péndulo Doble Conservativo</span>
+                <span class="brand-badge">Sistemas Dinámicos II &bull; ITAM</span>
             </div>
 
-            <footer id="transport-bar">
-                <div class="btn-group">
-                    <button id="btn-play-pause" class="btn btn-primary" aria-label="Iniciar o pausar">Pausa</button>
-                    <button id="btn-step" class="btn" aria-label="Avanzar un paso">Paso</button>
-                    <button id="btn-reset" class="btn" aria-label="Reiniciar condición">Reiniciar</button>
-                    <label class="btn-group" style="margin-left: 8px;">
-                        <span style="font-size: 12px; font-weight: 600;">Velocidad:</span>
-                        <select id="select-speed" class="speed-select" aria-label="Velocidad de simulación">
-                            <option value="0.25">0.25&times;</option>
-                            <option value="0.5">0.5&times;</option>
-                            <option value="1.0" selected>1.0&times;</option>
-                            <option value="2.0">2.0&times;</option>
-                        </select>
-                    </label>
+            <!-- Selector de Modos -->
+            <nav class="mode-tabs-container" aria-label="Modos de simulación">
+                <button class="mode-tab-btn active" data-mode="normal" id="tab-mode-normal">Normal</button>
+                <button class="mode-tab-btn" data-mode="gemelo" id="tab-mode-gemelo">Gemelo</button>
+                <button class="mode-tab-btn" data-mode="lineal" id="tab-mode-lineal">Lineal</button>
+                <button class="mode-tab-btn" data-mode="nube" id="tab-mode-nube">Nube</button>
+                <button class="mode-tab-btn" data-mode="montecarlo" id="tab-mode-montecarlo">Monte Carlo</button>
+            </nav>
+
+            <!-- Acciones de Cabecera -->
+            <div class="header-actions">
+                <button id="btn-theme-toggle" class="btn-header" title="Alternar tema oscuro / claro" aria-label="Alternar tema">
+                    <span id="theme-icon">🌙</span> <span id="theme-text">Oscuro</span>
+                </button>
+                <button id="btn-drawer-toggle" class="btn-header" title="Abrir controles y parámetros (tecla C)" aria-label="Abrir controles">
+                    <span>⚙</span> <span>Controles (C)</span>
+                </button>
+                <button id="btn-presentation" class="btn-header" title="Modo pantalla completa de exposición" aria-label="Modo presentación">
+                    <span>⛶</span> <span>Presentación</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Área de Trabajo Principal -->
+        <main id="main-workspace">
+            <!-- Columna Izquierda: Escenario del Péndulo (~53% ancho) -->
+            <section id="stage-column" aria-label="Escenario del péndulo">
+                <div id="canvas-wrapper">
+                    <canvas id="sim-canvas"></canvas>
+
+                    <!-- Advertencia de aproximación lineal fuera de rango -->
+                    <div id="linear-range-warning" role="alert">
+                        ⚠️ Aproximación lineal fuera de su rango (|θ| &gt; 0.3 rad)
+                    </div>
+
+                    <!-- HUD Cuantitativo Superior -->
+                    <div id="stage-hud">
+                        <div class="hud-group">
+                            <div class="hud-card">
+                                <span class="hud-title">Tiempo t</span>
+                                <span id="val-time" class="hud-val">0.00 s</span>
+                            </div>
+                            <div class="hud-card">
+                                <span class="hud-title">Energía E</span>
+                                <span id="val-energy-total" class="hud-val">0.00 J</span>
+                            </div>
+                            <div class="hud-card">
+                                <span class="hud-title">|ΔE|/E₀</span>
+                                <span id="val-delta-e" class="hud-val">0.0e+0</span>
+                            </div>
+                        </div>
+                        <div class="hud-group">
+                            <div class="hud-card">
+                                <span class="hud-title">Vueltas m₂</span>
+                                <span id="val-flips-m2" class="hud-val">0</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="btn-group">
-                    <label style="font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                        <input type="checkbox" id="check-trace" checked> Estela m₂
-                    </label>
-                    <button id="btn-presentation" class="btn" aria-label="Pantalla de exposición">Presentación</button>
+                <!-- Barra de Energía Horizontal Ampliada -->
+                <div id="stage-energy-container">
+                    <div class="energy-meta-row">
+                        <div class="energy-breakdown">
+                            <span style="color: var(--color-kinetic);"><span class="dot-indicator" style="background: var(--color-kinetic);"></span>T: <span id="val-energy-k">0.00</span> J</span>
+                            <span style="color: var(--color-potential);"><span class="dot-indicator" style="background: var(--color-potential);"></span>V: <span id="val-energy-v">0.00</span> J</span>
+                            <span style="color: var(--color-energy);"><span class="dot-indicator" style="background: var(--color-energy);"></span>E: <span id="val-energy-e">0.00</span> J</span>
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+                            Umbrales: <span id="lbl-ec-m2-val">19.62</span> J | <span id="lbl-ec-m1-val">39.24</span> J | <span id="lbl-ec-ambas-val">58.86</span> J
+                        </div>
+                    </div>
+
+                    <div id="energy-bar-track" title="Distribución de Energía Cinética y Potencial">
+                        <div id="energy-fill-kinetic" style="width: 50%;"></div>
+                        <div id="energy-fill-potential" style="width: 50%;"></div>
+                        <div id="marker-ec-m2" class="energy-threshold-marker" data-label="Ec_m2"></div>
+                        <div id="marker-ec-m1" class="energy-threshold-marker" data-label="Ec_m1"></div>
+                        <div id="marker-ec-ambas" class="energy-threshold-marker" data-label="Ec_ambas"></div>
+                    </div>
                 </div>
-            </footer>
+
+                <!-- Barra de Transporte Inferior -->
+                <footer id="transport-bar">
+                    <div class="btn-transport-group">
+                        <button id="btn-play-pause" class="btn-action btn-primary" aria-label="Iniciar o pausar simulación">Pausa</button>
+                        <button id="btn-step" class="btn-action" aria-label="Avanzar un paso temporal">Paso</button>
+                        <button id="btn-reset" class="btn-action" aria-label="Reiniciar condición inicial">Reiniciar</button>
+                        
+                        <label for="select-speed" style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
+                            <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">Velocidad:</span>
+                            <select id="select-speed" class="speed-select" aria-label="Velocidad de reproducción">
+                                <option value="0.25">0.25&times;</option>
+                                <option value="0.5">0.5&times;</option>
+                                <option value="1.0" selected>1.0&times;</option>
+                                <option value="2.0">2.0&times;</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="btn-transport-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="check-trace" checked> Estela m₂ térmica
+                        </label>
+                    </div>
+                </footer>
+            </section>
+
+            <!-- Columna Derecha: Rejilla 2x2 de Gráficas en Vivo (~47% ancho) -->
+            <section id="charts-column" aria-label="Gráficas dinámicas en vivo">
+                <!-- Gráfica 1: Ángulos θ1(t) y θ2(t) (Ventana 20s) -->
+                <article class="chart-card" id="card-chart-angles">
+                    <header class="chart-header">
+                        <span class="chart-title">Ángulos θ₁(t), θ₂(t)</span>
+                        <div class="chart-legend">
+                            <span style="color: var(--color-th1);">● θ₁</span>
+                            <span style="color: var(--color-th2);">● θ₂</span>
+                        </div>
+                    </header>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chart-angles" class="chart-canvas"></canvas>
+                    </div>
+                </article>
+
+                <!-- Gráfica 2: Retratos de Fase (θ, ω) con envoltura y cortes -->
+                <article class="chart-card" id="card-chart-phase">
+                    <header class="chart-header">
+                        <span class="chart-title">Retrato de Fase (θ, ω)</span>
+                        <div class="phase-tabs">
+                            <button class="phase-tab-btn active" data-phase="both">Ambos</button>
+                            <button class="phase-tab-btn" data-phase="p1">Péndulo 1</button>
+                            <button class="phase-tab-btn" data-phase="p2">Péndulo 2</button>
+                        </div>
+                    </header>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chart-phase" class="chart-canvas"></canvas>
+                    </div>
+                </article>
+
+                <!-- Gráfica 3: Energía y Deriva Logarítmica -->
+                <article class="chart-card" id="card-chart-energy">
+                    <header class="chart-header">
+                        <span class="chart-title">Energía y Deriva |ΔE|/E₀</span>
+                        <div class="chart-legend">
+                            <span style="color: var(--color-kinetic);">■ T</span>
+                            <span style="color: var(--color-potential);">■ V</span>
+                            <span style="color: var(--color-energy);">― E</span>
+                        </div>
+                    </header>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chart-energy" class="chart-canvas"></canvas>
+                    </div>
+                </article>
+
+                <!-- Gráfica 4: Panel Contextual según el Modo Activo -->
+                <article class="chart-card" id="card-chart-contextual">
+                    <header class="chart-header">
+                        <span class="chart-title" id="contextual-panel-title">Mapa de Caos Adimensional (FTLE)</span>
+                        <div id="contextual-header-info" class="chart-legend">
+                            <span id="contextual-meta-text">τ = t√(g/l₁)</span>
+                        </div>
+                    </header>
+                    <div id="contextual-panel-content">
+                        <!-- Vista Modo Normal: Mapa de Caos FTLE Adimensional -->
+                        <div id="ftle-map-container">
+                            <canvas id="ftle-canvas"></canvas>
+                            <div id="ftle-info-bar">
+                                <span>θ₁: <strong id="ftle-th1">0.0°</strong> | θ₂: <strong id="ftle-th2">0.0°</strong> | λ: <strong id="ftle-val">0.00</strong></span>
+                                <span class="ftle-hint" style="font-size: 8.5px; opacity: 0.8;">Clic para fijar CI</span>
+                            </div>
+                        </div>
+
+                        <!-- Vista Modo Gemelo: Divergencia y ajuste de λ -->
+                        <div id="gemelo-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                            <canvas id="gemelo-canvas" class="chart-canvas"></canvas>
+                        </div>
+
+                        <!-- Vista Modo Lineal: No lineal vs Lineal -->
+                        <div id="lineal-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                            <canvas id="lineal-canvas" class="chart-canvas"></canvas>
+                        </div>
+
+                        <!-- Vista Modo Nube: Histograma en vivo de vueltas -->
+                        <div id="nube-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                            <canvas id="nube-canvas" class="chart-canvas"></canvas>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <!-- Pestaña / Vista Completa de Monte Carlo -->
+            <div id="montecarlo-panel" aria-label="Laboratorio de Monte Carlo">
+                <div class="mc-grid">
+                    <!-- Controles Monte Carlo -->
+                    <div class="mc-controls-card">
+                        <h3 style="font-size: 14px; font-weight: 700; color: var(--text-main);">Configuración de Muestreo</h3>
+                        
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Condición Base (θ₁, θ₂):</span>
+                                <span id="mc-base-label" class="control-slider-val">Actual (45°, 45°)</span>
+                            </label>
+                            <button id="btn-mc-use-current" class="btn-action" style="min-height: 28px; font-size: 11px;">Usar Ángulos Actuales</button>
+                        </div>
+
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Tamaño Muestral N:</span>
+                                <span id="mc-lbl-n" class="control-slider-val">500</span>
+                            </label>
+                            <input type="range" id="mc-slider-n" class="slider-input" min="100" max="2000" step="50" value="500">
+                        </div>
+
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Ruido Angular σ:</span>
+                                <span id="mc-lbl-sigma" class="control-slider-val">0.010 rad</span>
+                            </label>
+                            <input type="range" id="mc-slider-sigma" class="slider-input" min="0.001" max="0.100" step="0.001" value="0.010">
+                        </div>
+
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Correlación ρ:</span>
+                                <span id="mc-lbl-rho" class="control-slider-val">0.00</span>
+                            </label>
+                            <input type="range" id="mc-slider-rho" class="slider-input" min="-0.90" max="0.90" step="0.05" value="0.00">
+                        </div>
+
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Tiempo de Integración T:</span>
+                                <span id="mc-lbl-t" class="control-slider-val">30 s</span>
+                            </label>
+                            <input type="range" id="mc-slider-t" class="slider-input" min="5" max="60" step="5" value="30">
+                        </div>
+
+                        <div class="control-slider-group">
+                            <label class="control-slider-label">
+                                <span>Semilla (Mulberry32):</span>
+                                <input type="number" id="mc-seed-input" class="speed-select" style="width: 100px; padding: 2px 6px;" value="20261119">
+                            </label>
+                        </div>
+
+                        <button id="btn-mc-run" class="btn-action btn-primary" style="margin-top: 8px;">▶ Correr Simulación Monte Carlo</button>
+                        <button id="btn-mc-compare-low" class="btn-action">Comparar con Baja Energía (A/B)</button>
+                        <button id="btn-mc-replay-cloud" class="btn-action" style="display: none;">Animar Nube de Partículas</button>
+
+                        <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 8px;">
+                            <div class="progress-track">
+                                <div id="mc-progress-fill" class="progress-fill"></div>
+                            </div>
+                            <span id="mc-progress-text" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); text-align: center;">Listo</span>
+                        </div>
+                    </div>
+
+                    <!-- Resultados Estadísticos y Comparativa A/B -->
+                    <div class="mc-results-card">
+                        <div class="mc-stats-summary">
+                            <div class="mc-stat-box">
+                                <div class="mc-stat-title">Media de Vueltas m₂</div>
+                                <div id="mc-val-mean" class="mc-stat-num">--</div>
+                                <div id="mc-ci-mean" class="mc-stat-ci">IC 95% Bootstrap: [--]</div>
+                            </div>
+                            <div class="mc-stat-box">
+                                <div class="mc-stat-title">Desviación Estándar</div>
+                                <div id="mc-val-std" class="mc-stat-num">--</div>
+                                <div id="mc-ci-std" class="mc-stat-ci">IC 95% Bootstrap: [--]</div>
+                            </div>
+                            <div class="mc-stat-box">
+                                <div class="mc-stat-title">P(Vueltas &gt; 0)</div>
+                                <div id="mc-val-pflip" class="mc-stat-num">--</div>
+                                <div id="mc-ci-wilson" class="mc-stat-ci">IC 95% Wilson: [--]</div>
+                            </div>
+                        </div>
+
+                        <div style="flex: 1; min-height: 250px; background: var(--panel-sub); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 8px; position: relative;">
+                            <canvas id="mc-histogram-canvas" style="width: 100%; height: 100%; display: block;"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cajón Plegable de Parámetros y Presets (#drawer-panel) -->
+            <aside id="drawer-panel" aria-label="Panel de configuración de parámetros">
+                <header class="drawer-header">
+                    <span class="drawer-title">Parámetros del Sistema</span>
+                    <button id="btn-drawer-close" class="drawer-close-btn" aria-label="Cerrar controles">&times;</button>
+                </header>
+
+                <div class="drawer-scroll-body">
+                    <!-- 1. Integrador Numérico -->
+                    <section class="drawer-section">
+                        <span class="section-label">Algoritmo de Integración</span>
+                        <div class="integrator-selector">
+                            <button id="btn-integ-rk4" class="btn-integrator active" data-integ="rk4_38">RK4 3/8 Kutta</button>
+                            <button id="btn-integ-clasico" class="btn-integrator" data-integ="rk4_clasico">RK4 Clásico</button>
+                        </div>
+                    </section>
+
+                    <!-- 2. Aceleración de la Gravedad -->
+                    <section class="drawer-section">
+                        <span class="section-label">Aceleración de Gravedad g</span>
+                        <div class="gravity-presets-row">
+                            <button class="btn-gravity-preset" data-g="9.81">Tierra (9.81)</button>
+                            <button class="btn-gravity-preset" data-g="1.62">Luna (1.62)</button>
+                            <button class="btn-gravity-preset" data-g="24.79">Júpiter (24.79)</button>
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Valor de g:</span>
+                                <span id="lbl-g" class="control-slider-val">9.81 m/s²</span>
+                            </div>
+                            <input type="range" id="slider-g" class="slider-input" min="0.5" max="30.0" step="0.05" value="9.81">
+                        </div>
+                    </section>
+
+                    <!-- 3. Geometría y Masas -->
+                    <section class="drawer-section">
+                        <span class="section-label">Geometría y Masas</span>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Longitud l₁:</span>
+                                <span id="lbl-l1" class="control-slider-val">1.00 m</span>
+                            </div>
+                            <input type="range" id="slider-l1" class="slider-input" min="0.2" max="2.0" step="0.05" value="1.0">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Longitud l₂:</span>
+                                <span id="lbl-l2" class="control-slider-val">1.00 m</span>
+                            </div>
+                            <input type="range" id="slider-l2" class="slider-input" min="0.2" max="2.0" step="0.05" value="1.0">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Masa m₁:</span>
+                                <span id="lbl-m1" class="control-slider-val">1.00 kg</span>
+                            </div>
+                            <input type="range" id="slider-m1" class="slider-input" min="0.1" max="10.0" step="0.1" value="1.0">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Masa m₂:</span>
+                                <span id="lbl-m2" class="control-slider-val">1.00 kg</span>
+                            </div>
+                            <input type="range" id="slider-m2" class="slider-input" min="0.1" max="10.0" step="0.1" value="1.0">
+                        </div>
+                        <div style="font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px;">
+                            Cocientes adimensionales: μ = m₂/m₁ = <strong id="lbl-mu">1.00</strong>, λ = l₂/l₁ = <strong id="lbl-lambda">1.00</strong>
+                        </div>
+                    </section>
+
+                    <!-- 4. Condiciones Iniciales -->
+                    <section class="drawer-section">
+                        <span class="section-label">Condiciones Iniciales x₀</span>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Ángulo θ₁(0):</span>
+                                <span id="lbl-th1" class="control-slider-val">45°</span>
+                            </div>
+                            <input type="range" id="slider-th1" class="slider-input" min="-180" max="180" step="1" value="45">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Ángulo θ₂(0):</span>
+                                <span id="lbl-th2" class="control-slider-val">45°</span>
+                            </div>
+                            <input type="range" id="slider-th2" class="slider-input" min="-180" max="180" step="1" value="45">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Velocidad ω₁(0):</span>
+                                <span id="lbl-w1" class="control-slider-val">0.0 rad/s</span>
+                            </div>
+                            <input type="range" id="slider-w1" class="slider-input" min="-10" max="10" step="0.1" value="0.0">
+                        </div>
+                        <div class="control-slider-group">
+                            <div class="control-slider-label">
+                                <span>Velocidad ω₂(0):</span>
+                                <span id="lbl-w2" class="control-slider-val">0.0 rad/s</span>
+                            </div>
+                            <input type="range" id="slider-w2" class="slider-input" min="-10" max="10" step="0.1" value="0.0">
+                        </div>
+                    </section>
+
+                    <!-- 5. Presets de Exposición -->
+                    <section class="drawer-section">
+                        <span class="section-label">Presets Teóricos y de Exposición</span>
+                        <div class="presets-grid">
+                            <button class="btn-preset-card" data-preset="pequenas_oscilaciones">
+                                <span>Pequeñas oscilaciones</span>
+                                <span class="preset-sub">(0.20, 0.25) rad</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="cuasi_periodico">
+                                <span>Cuasi-periódico</span>
+                                <span class="preset-sub">(0.80, 0.60) rad</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="caotico">
+                                <span>Caótico</span>
+                                <span class="preset-sub">(π-0.05, π-0.05)</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="cerca_origen">
+                                <span>Cerca del Origen</span>
+                                <span class="preset-sub">(0.05, 0.05) rad</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="baja_energia">
+                                <span>Baja Energía</span>
+                                <span class="preset-sub">E &lt; Ec_m2 (0 vueltas)</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="alta_energia">
+                                <span>Alta Energía</span>
+                                <span class="preset-sub">E &gt; Ec_m2 (Caos)</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="modo_1">
+                                <span>Modo 1 (En fase)</span>
+                                <span class="preset-sub">ω₁ = 2.40 rad/s</span>
+                            </button>
+                            <button class="btn-preset-card" data-preset="modo_2">
+                                <span>Modo 2 (Contrafase)</span>
+                                <span class="preset-sub">ω₂ = 5.79 rad/s</span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </aside>
         </main>
-
-        <!-- Columna Derecha: Métricas, Energía, Mapa de Caos y Controles -->
-        <aside id="sidebar-column">
-            <!-- 1. Energía y Umbrales Críticos -->
-            <section class="panel-section">
-                <div class="panel-header">
-                    <h3 class="panel-title">Energía y Umbrales de Silla</h3>
-                    <span id="label-delta-e" style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-blue); font-weight: 700;">|ΔE|/E₀: 0.0e+0</span>
-                </div>
-                <div id="energy-container">
-                    <div id="energy-bar-wrapper">
-                        <div id="energy-bar-kinetic"></div>
-                        <div id="energy-bar-potential"></div>
-                        <div id="line-ec-m2" class="threshold-line" style="background: #1f4fd6;">
-                            <span id="lbl-ec-m2" class="threshold-label" style="color: #1f4fd6;">Ec_m2</span>
-                        </div>
-                        <div id="line-ec-m1" class="threshold-line" style="background: #d62728;">
-                            <span id="lbl-ec-m1" class="threshold-label" style="color: #d62728;">Ec_m1</span>
-                        </div>
-                        <div id="line-ec-ambas" class="threshold-line" style="background: #7b3294;">
-                            <span id="lbl-ec-ambas" class="threshold-label" style="color: #7b3294;">Ec_ambas</span>
-                        </div>
-                    </div>
-                    <div id="energy-data">
-                        <div class="data-row">
-                            <span class="data-label">Energía Total E:</span>
-                            <span id="val-energy-total" class="data-val">0.00 J</span>
-                        </div>
-                        <div class="data-row">
-                            <span class="data-label">Cinética T:</span>
-                            <span id="val-energy-kinetic" class="data-val" style="color: var(--accent-red);">0.00 J</span>
-                        </div>
-                        <div class="data-row">
-                            <span class="data-label">Potencial V:</span>
-                            <span id="val-energy-potential" class="data-val" style="color: var(--accent-blue);">0.00 J</span>
-                        </div>
-                        <div class="data-row">
-                            <span class="data-label">Tiempo t:</span>
-                            <span id="val-time" class="data-val">0.00 s</span>
-                        </div>
-                        <div class="data-row">
-                            <span class="data-label">Vueltas Masa 2:</span>
-                            <span id="val-flips-m2" class="data-val">0</span>
-                        </div>
-                        <div class="data-row">
-                            <span class="data-label">Vueltas Masa 1:</span>
-                            <span id="val-flips-m1" class="data-val">0</span>
-                        </div>
-                        <div id="regime-badge">Evaluando régimen...</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 2. Mapa de Caos FTLE en Vivo -->
-            <section class="panel-section">
-                <div class="panel-header">
-                    <h3 class="panel-title">Mapa de Caos (FTLE)</h3>
-                    <button id="btn-recalc-map" class="btn" style="min-height: 28px; padding: 2px 8px; font-size: 11px;">Recalcular</button>
-                </div>
-                <div id="chaos-map-container">
-                    <div id="chaos-map-canvas-wrapper">
-                        <canvas id="chaos-canvas" width="200" height="200"></canvas>
-                        <div id="chaos-target-marker"></div>
-                    </div>
-                    <p class="chaos-map-sub">
-                        Toca el plano (θ₁, θ₂) para fijar la condición inicial.<br>
-                        <em>Contornos: Ec_m2 (cian), Ec_m1 (negro/blanco).</em>
-                    </p>
-                </div>
-            </section>
-
-            <!-- 3. Parámetros Físicos y Condiciones Iniciales -->
-            <section class="panel-section">
-                <div class="panel-header">
-                    <h3 class="panel-title">Parámetros del Sistema</h3>
-                </div>
-                <div class="control-grid">
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Longitud l₁:</span>
-                            <span id="lbl-l1">1.00 m</span>
-                        </div>
-                        <input type="range" id="slider-l1" class="control-slider" min="0.2" max="2.0" step="0.05" value="1.0">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Longitud l₂:</span>
-                            <span id="lbl-l2">1.00 m</span>
-                        </div>
-                        <input type="range" id="slider-l2" class="control-slider" min="0.2" max="2.0" step="0.05" value="1.0">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Masa m₁:</span>
-                            <span id="lbl-m1">1.0 kg</span>
-                        </div>
-                        <input type="range" id="slider-m1" class="control-slider" min="0.1" max="20.0" step="0.1" value="1.0">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Masa m₂:</span>
-                            <span id="lbl-m2">1.0 kg</span>
-                        </div>
-                        <input type="range" id="slider-m2" class="control-slider" min="0.1" max="20.0" step="0.1" value="1.0">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Ángulo θ₁(0):</span>
-                            <span id="lbl-th1">45°</span>
-                        </div>
-                        <input type="range" id="slider-th1" class="control-slider" min="-180" max="180" step="1" value="45">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Ángulo θ₂(0):</span>
-                            <span id="lbl-th2">45°</span>
-                        </div>
-                        <input type="range" id="slider-th2" class="control-slider" min="-180" max="180" step="1" value="45">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Velocidad ω₁(0):</span>
-                            <span id="lbl-w1">0.0 rad/s</span>
-                        </div>
-                        <input type="range" id="slider-w1" class="control-slider" min="-10" max="10" step="0.1" value="0">
-                    </div>
-                    <div class="control-item">
-                        <div class="control-label-row">
-                            <span>Velocidad ω₂(0):</span>
-                            <span id="lbl-w2">0.0 rad/s</span>
-                        </div>
-                        <input type="range" id="slider-w2" class="control-slider" min="-10" max="10" step="0.1" value="0">
-                    </div>
-                    <div class="ratios-note">
-                        <strong>Cocientes adimensionales:</strong> m₂/m₁ = <span id="lbl-mu">1.00</span>, l₂/l₁ = <span id="lbl-lambda">1.00</span>.<br>
-                        <em>La topología adimensional del movimiento solo depende de estos dos valores.</em>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 4. Parámetros Específicos del Modo Activo -->
-            <section id="mode-controls-section" class="panel-section" style="display: none;">
-                <div class="panel-header">
-                    <h3 class="panel-title" id="mode-controls-title">Controles del Modo</h3>
-                </div>
-                <div id="mode-controls-content"></div>
-            </section>
-
-            <!-- 5. Presets Teóricos y del Informe -->
-            <section class="panel-section">
-                <div class="panel-header">
-                    <h3 class="panel-title">Presets de Exposición</h3>
-                </div>
-                <div class="preset-buttons-grid">
-                    <button class="btn-preset" data-preset="cerca_origen">Cerca del Origen</button>
-                    <button class="btn-preset" data-preset="baja_energia">Baja Energía (0 vueltas)</button>
-                    <button class="btn-preset" data-preset="alta_energia">Alta Energía (Caos)</button>
-                    <button class="btn-preset" data-preset="caso_1_informe">Caso 1 Informe</button>
-                    <button class="btn-preset" data-preset="caso_2_informe">Caso 2 Informe</button>
-                    <button class="btn-preset" data-preset="modo_1">Modo Normal 1 (En fase)</button>
-                    <button class="btn-preset" data-preset="modo_2">Modo Normal 2 (Contrafase)</button>
-                </div>
-            </section>
-        </aside>
     </div>
 
     <!-- Scripts locales sin dependencias externas -->

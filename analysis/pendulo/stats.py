@@ -110,10 +110,31 @@ def bootstrap_metricas(
 def prueba_estabilidad_ks(
     muestra_dt: np.ndarray,
     muestra_dt_medio: np.ndarray,
+    n_resamples: int = 5000,
+    random_state: Optional[Union[int, np.random.Generator]] = None,
 ) -> Dict[str, float]:
-    """Compara las distribuciones de pasos por arriba con dt y dt/2 mediante Kolmogorov-Smirnov."""
+    """Compara las distribuciones de pasos por arriba con dt y dt/2 mediante Kolmogorov-Smirnov y prueba de permutación para datos discretos."""
     res_ks = stats.ks_2samp(muestra_dt, muestra_dt_medio)
+    d_obs = float(res_ks.statistic)
+
+    def stat_func(x, y, axis=-1):
+        if x.ndim == 1:
+            return stats.ks_2samp(x, y).statistic
+        return np.array([stats.ks_2samp(x[i], y[i]).statistic for i in range(x.shape[0])])
+
+    res_perm = stats.permutation_test(
+        (muestra_dt, muestra_dt_medio),
+        statistic=stat_func,
+        permutation_type="independent",
+        n_resamples=n_resamples,
+        alternative="greater",
+        random_state=random_state,
+    )
+
     return {
-        "estadistico_ks": float(res_ks.statistic),
-        "p_valor": float(res_ks.pvalue),
+        "estadistico_ks": d_obs,
+        "p_valor_asintotico": float(res_ks.pvalue),
+        "p_valor_permutacion": float(res_perm.pvalue),
+        "p_valor": float(res_perm.pvalue),
     }
+

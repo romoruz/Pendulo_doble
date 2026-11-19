@@ -347,7 +347,7 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     dt_medio = dt_base / 2.0
     _, traj_alta_dt2 = integrar_rk4(x0_alta_lote, t_max=t_max, dt=dt_medio, params=params)
     vueltas_alta_dt2, _ = contar_vueltas_trayectoria(traj_alta_dt2[:, :, 1], axis=0)
-    res_ks = prueba_estabilidad_ks(vueltas_alta_dt, vueltas_alta_dt2)
+    res_ks = prueba_estabilidad_ks(vueltas_alta_dt, vueltas_alta_dt2, n_resamples=5000, random_state=SEMILLA_DEFECTO)
     porcentaje_cambio_individual = float(np.mean(vueltas_alta_dt != vueltas_alta_dt2) * 100.0)
 
     fig, (ax_b1, ax_b2, ax_b3) = plt.subplots(1, 3, figsize=(16, 5.5), sharey=False)
@@ -391,9 +391,9 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     ax_b3.set_xlim(-1, max_x)
     ax_b3.legend(loc="upper right", fontsize=9, framealpha=0.9)
     ax_b3.text(
-        0.05, 0.70,
-        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nPrueba KS: D = {res_ks['estadistico_ks']:.4f}, p = {res_ks['p_valor']:.2f}\nKS no rechaza igualdad (p = {res_ks['p_valor']:.2f})",
-        transform=ax_b3.transAxes, fontsize=9.5, color="#111111"
+        0.05, 0.68,
+        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nKS: D = {res_ks['estadistico_ks']:.4f}\np-perm = {res_ks['p_valor_permutacion']:.2f} (asintótico {res_ks['p_valor_asintotico']:.2f})\nKS permutación no rechaza (p = {res_ks['p_valor_permutacion']:.2f})",
+        transform=ax_b3.transAxes, fontsize=9.0, color="#111111"
     )
 
     datos_acumulados["lamina_b"] = {
@@ -410,6 +410,8 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
             "media_dt2": float(np.mean(vueltas_alta_dt2)),
             "porcentaje_cambio_individual": porcentaje_cambio_individual,
             "estadistico_ks": res_ks["estadistico_ks"],
+            "p_valor_asintotico": res_ks["p_valor_asintotico"],
+            "p_valor_permutacion": res_ks["p_valor_permutacion"],
             "p_valor_ks": res_ks["p_valor"],
         },
     }

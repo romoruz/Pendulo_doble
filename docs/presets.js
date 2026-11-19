@@ -61,6 +61,57 @@
       0.0
     ]
   },
+  "pequenas_oscilaciones": {
+    "nombre": "Pequeñas oscilaciones",
+    "descripcion": "Régimen lineal cercano (0.20, 0.25)",
+    "params": {
+      "m1": 1.0,
+      "m2": 1.0,
+      "l1": 1.0,
+      "l2": 1.0,
+      "g": 9.81
+    },
+    "x0": [
+      0.2,
+      0.25,
+      0.0,
+      0.0
+    ]
+  },
+  "cuasi_periodico": {
+    "nombre": "Cuasi-periódico",
+    "descripcion": "Trayectoria regular en toro invariante (0.80, 0.60)",
+    "params": {
+      "m1": 1.0,
+      "m2": 1.0,
+      "l1": 1.0,
+      "l2": 1.0,
+      "g": 9.81
+    },
+    "x0": [
+      0.8,
+      0.6,
+      0.0,
+      0.0
+    ]
+  },
+  "caotico": {
+    "nombre": "Caótico",
+    "descripcion": "Alta sensibilidad cerca de la cima invertida (π-0.05, π-0.05)",
+    "params": {
+      "m1": 1.0,
+      "m2": 1.0,
+      "l1": 1.0,
+      "l2": 1.0,
+      "g": 9.81
+    },
+    "x0": [
+      3.0915926535897933,
+      3.0915926535897933,
+      0.0,
+      0.0
+    ]
+  },
   "caso_1_informe": {
     "nombre": "Caso 1 del informe",
     "descripcion": "Condición cuasiperiódica regular",

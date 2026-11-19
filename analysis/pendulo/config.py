@@ -70,6 +70,21 @@ PRESETS_CI = {
         "descripcion": "E > Ec_m2 con comportamiento caótico y vueltas frecuentes",
         "x0": [2.6, 2.6, 0.0, 0.0],
     },
+    "pequenas_oscilaciones": {
+        "nombre": "Pequeñas oscilaciones",
+        "descripcion": "Régimen lineal cercano (0.20, 0.25)",
+        "x0": [0.20, 0.25, 0.0, 0.0],
+    },
+    "cuasi_periodico": {
+        "nombre": "Cuasi-periódico",
+        "descripcion": "Trayectoria regular en toro invariante (0.80, 0.60)",
+        "x0": [0.80, 0.60, 0.0, 0.0],
+    },
+    "caotico": {
+        "nombre": "Caótico",
+        "descripcion": "Alta sensibilidad cerca de la cima invertida (π-0.05, π-0.05)",
+        "x0": [float(np.pi - 0.05), float(np.pi - 0.05), 0.0, 0.0],
+    },
     "caso_1_informe": {
         "nombre": "Caso 1 del informe",
         "descripcion": "Condición cuasiperiódica regular",
