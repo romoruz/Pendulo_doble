@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-19 09:06:37",
+  "timestamp": "2026-11-19 09:23:51",
   "semilla": 20261119,
   "equilibrios": {
     "origen": {
@@ -98,11 +98,12 @@
       0.0,
       0.0
     ],
-    "dt_a1": 0.005,
-    "t_max_a1": 200.0,
-    "deriva_final_rk4": 3.556231098255951e-05,
-    "deriva_max_rk4": 3.556231098255951e-05,
-    "error_max_punto_medio": 0.0011281520347486175,
+    "dt_a1": 0.01,
+    "t_max_a1": 1500.0,
+    "tiempo_cruce_s": 100.10000000000001,
+    "error_max_rk4_t40_dt0005": 6.973577480510185e-06,
+    "deriva_final_rk4_1500s": 0.008368074509870886,
+    "error_max_punto_medio_1500s": 0.0051965668959771,
     "orden": {
       "dts": [
         0.04,
@@ -191,24 +192,44 @@
       "fraccion_cuasiregular_sobre_ecm2": 0.15824276548382873
     }
   },
-  "secciones_poincare": {
-    "caso_1": {
-      "x0": [
-        0.2,
-        0.25,
-        0.0,
-        0.0
-      ],
-      "num_cruces": 457
+  "figura_d": {
+    "umbrales": {
+      "Ec_m2": 19.62,
+      "Ec_m1": 39.24,
+      "Ec_ambas": 58.86,
+      "primer_umbral": "Ec_m2",
+      "m2_l2": 1.0,
+      "m_total_l1": 2.0
     },
-    "caso_2": {
-      "x0": [
-        3.0915926535897933,
-        3.0915926535897933,
-        0.0,
-        0.0
-      ],
-      "num_cruces": 459
+    "equilibrios_potencial": {
+      "centro": {
+        "coord": [
+          0.0,
+          0.0
+        ],
+        "V": 0.0
+      },
+      "silla_m2": {
+        "coord": [
+          0.0,
+          3.141592653589793
+        ],
+        "V": 19.62
+      },
+      "silla_m1": {
+        "coord": [
+          3.141592653589793,
+          0.0
+        ],
+        "V": 39.24
+      },
+      "silla_doble": {
+        "coord": [
+          3.141592653589793,
+          3.141592653589793
+        ],
+        "V": 58.86
+      }
     }
   }
 }
