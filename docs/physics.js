@@ -340,7 +340,11 @@
         var N = datos.length;
         B = B || 2000;
         confianza = (confianza !== undefined) ? confianza : 0.95;
-        if (!rng) rng = mulberry32(12345);
+        if (!rng) {
+            rng = mulberry32(12345);
+        } else if (typeof rng === 'number') {
+            rng = mulberry32(rng);
+        }
 
         var sum = 0;
         for (var i = 0; i < N; i++) sum += datos[i];

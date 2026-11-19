@@ -377,9 +377,10 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     ax_b2.axvspan(boot_alta["media_ci_bajo"], boot_alta["media_ci_alto"], color="#111111", alpha=0.15, label="IC 95% BCa media")
     ax_b2.legend(loc="upper right", fontsize=8.5, framealpha=0.9)
     ax_b2.text(
-        0.05, 0.72,
-        f"Media: {boot_alta['media']:.2f} (IC: [{boot_alta['media_ci_bajo']:.2f}, {boot_alta['media_ci_alto']:.2f}])\nDesv. Est.: {boot_alta['std']:.2f} (IC: [{boot_alta['std_ci_bajo']:.2f}, {boot_alta['std_ci_alto']:.2f}])",
-        transform=ax_b2.transAxes, fontsize=9.5, color="#111111"
+        0.56, 0.65,
+        f"Media: {boot_alta['media']:.2f}\n  IC: [{boot_alta['media_ci_bajo']:.2f}, {boot_alta['media_ci_alto']:.2f}]\nDesv. Est.: {boot_alta['std']:.2f}\n  IC: [{boot_alta['std_ci_bajo']:.2f}, {boot_alta['std_ci_alto']:.2f}]",
+        transform=ax_b2.transAxes, fontsize=8.8, color="#111111",
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="#cccccc", alpha=0.92)
     )
 
     # B3: Estabilidad numérica (dt vs dt/2)
@@ -391,9 +392,10 @@ def generar_lamina_b(datos_acumulados: Dict[str, Any]) -> None:
     ax_b3.set_xlim(-1, max_x)
     ax_b3.legend(loc="upper right", fontsize=9, framealpha=0.9)
     ax_b3.text(
-        0.05, 0.68,
-        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nKS: D = {res_ks['estadistico_ks']:.4f}\np-perm = {res_ks['p_valor_permutacion']:.2f} (asintótico {res_ks['p_valor_asintotico']:.2f})\nKS permutación no rechaza (p = {res_ks['p_valor_permutacion']:.2f})",
-        transform=ax_b3.transAxes, fontsize=9.0, color="#111111"
+        0.52, 0.58,
+        f"Trayectorias alteradas: {porcentaje_cambio_individual:.1f}%\nPrueba KS (permutación):\n  D = {res_ks['estadistico_ks']:.4f}\n  p-perm = {res_ks['p_valor_permutacion']:.2f} (asint. {res_ks['p_valor_asintotico']:.2f})\n  No rechaza igualdad",
+        transform=ax_b3.transAxes, fontsize=8.5, color="#111111",
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="#cccccc", alpha=0.92)
     )
 
     datos_acumulados["lamina_b"] = {

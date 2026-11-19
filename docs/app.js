@@ -1,22 +1,23 @@
 /**
  * app.js - Controlador Principal del Simulador del Péndulo Doble Conservativo.
- * Laboratorio de Sistemas Dinámicos II | ITAM
- * 
- * Implementa:
- * - Tema oscuro por defecto y alternancia a tema claro con paleta estricta.
- * - Integración en tiempo real (RK4 3/8 y RK4 Clásico) con conservación de energía.
- * - Rejilla 2x2 de gráficas en vivo (Ángulos, Retrato de fase con cortes, Energía/Log, Panel contextual).
- * - Retratos de fase envueltos en (-pi, pi] cortando saltos (|Δθ| > pi) con moveTo.
- * - Mapa de caos adimensional FTLE con ejes, barra de color, contornos y retícula interactiva.
- * - Laboratorio de Monte Carlo con Web Worker (Blob), bootstrap percentil (B=2000), Wilson y comparativa A/B.
- * - Soporte táctil integral (iPad Retina) y modo presentación.
+ * Sistemas Dinámicos II | ITAM - Fase 3c: Simplificación y Claridad Visual
+ *
+ * Características:
+ * - Barra lateral izquierda fija (300 px) con scroll independiente.
+ * - 4 pestañas directas: Péndulo, Gemelos (caos), Monte Carlo, Mapa de caos.
+ * - Estilo visual de divulgación ("Mates Mike"): péndulo grande, ángulos en números grandes, cuñas sombreadas.
+ * - Sin emojis en toda la interfaz (advertencia lineal en texto plano).
+ * - Termómetro de energía horizontal con umbrales en palabras y el axioma "Poder dar la vuelta no implica caos."
+ * - Gemelos con ajuste de exponente de Lyapunov dimensional (s⁻¹) y adimensional (λ·√(l₁/g)).
+ * - Monte Carlo dual side-by-side (Baja energía vs Alta energía) con animación sincronizada de N=300 y estadísticos bootstrap/Wilson.
+ * - Mapa de caos precargado (96×96) instantáneo, nunca negro, con una sola cruz interactiva.
  */
 
 (function () {
     'use strict';
 
     // =========================================================================
-    // 1. CONFIGURACIÓN Y PALETAS DE COLOR
+    // 1. PALETAS DE COLOR Y TEMAS
     // =========================================================================
     var TEMAS = {
         dark: {
@@ -27,16 +28,19 @@
             text: '#e6e9ef',
             textMuted: '#8892b0',
             grid: '#1f293d',
+            rod: '#d0d7de',
+            rodGhost: 'rgba(150, 160, 180, 0.35)',
             th1: '#4cc9f0',        // Cian
             th2: '#f72585',        // Magenta
             energy: '#ffb703',     // Ámbar
             kinetic: '#2ec4b6',    // Verde Menta
             potential: '#9b5de5',  // Violeta
-            traceSlow: [76, 201, 240],   // Cian
-            traceMid: [255, 183, 3],     // Ámbar
-            traceFast: [247, 37, 133],   // Magenta caliente
             contourM2: '#4cc9f0',
-            contourM1: '#ffb703'
+            contourM1: '#ffb703',
+            cross: '#ffffff',
+            traceSlow: [76, 201, 240],
+            traceMid: [255, 183, 3],
+            traceFast: [247, 37, 133]
         },
         light: {
             bg: '#f4f6fa',
@@ -46,35 +50,38 @@
             text: '#0f172a',
             textMuted: '#475569',
             grid: '#e2e8f0',
+            rod: '#1e293b',
+            rodGhost: 'rgba(100, 116, 139, 0.35)',
             th1: '#0284c7',        // Cian oscuro
             th2: '#d946ef',        // Magenta
             energy: '#b45309',     // Ámbar
             kinetic: '#0d9488',    // Menta oscuro
             potential: '#7c3aed',  // Violeta
+            contourM2: '#0284c7',
+            contourM1: '#111827',
+            cross: '#000000',
             traceSlow: [2, 132, 199],
             traceMid: [180, 83, 9],
-            traceFast: [217, 70, 239],
-            contourM2: '#0284c7',
-            contourM1: '#111827'
+            traceFast: [217, 70, 239]
         }
     };
 
     var temaActual = 'dark';
-    function colorTema(nombre) {
-        return TEMAS[temaActual][nombre];
+    function color(nombre) {
+        return TEMAS[temaActual][nombre] || '#ffffff';
     }
 
     // =========================================================================
-    // 2. ESTADO GLOBAL DE LA SIMULACIÓN
+    // 2. ESTADO GLOBAL DE LA APLICACIÓN
     // =========================================================================
     var estado = {
-        // Modo activo: 'normal', 'gemelo', 'lineal', 'nube', 'montecarlo'
-        modo: 'normal',
+        tabActiva: 'pendulo', // 'pendulo', 'gemelos', 'montecarlo', 'mapacaos'
         corriendo: true,
         velocidad: 1.0,
         mostrarEstela: true,
-        algoritmo: 'rk4_38', // 'rk4_38' o 'rk4_clasico'
-        subfaseRetrato: 'both', // 'both', 'p1', 'p2'
+        algoritmo: 'rk4_38',
+        modoLinealActivo: false,
+        vistaEspacioFase: false,
 
         // Parámetros físicos
         params: PenduloFisica.crearParametros(1.0, 1.0, 1.0, 1.0, 9.81),
@@ -85,593 +92,1553 @@
         t: 0.0,
         dtBase: 0.005,
 
-        // Energía inicial de referencia
+        // Energía
         e0: 0.0,
         deltaERel: 0.0,
 
-        // Vueltas continuas y pulsos
+        // Conteo continuo de vueltas
         theta2Continuo: Math.PI / 4,
         vueltasM2: 0,
-        vueltasM1: 0,
         theta1Continuo: Math.PI / 4,
+        vueltasM1: 0,
 
-        // Historial de estela térmica de la masa 2 (máx 1500)
+        // Historiales
         estelaM2: [],
+        historialTiempo: [], // { t, th1, th2, w1, w2, th1Lin, th2Lin }
+        ventanaS: 20.0,
 
-        // Historial temporal para gráficas (últimos 20s)
-        historialTiempo: [],
-        ventanaHistorialS: 20.0,
+        // Estado Lineal
+        xLineal: [Math.PI / 4, Math.PI / 4, 0.0, 0.0],
 
-        // Estado gemelo (Modo Gemelo)
+        // Estado Gemelos
+        deltaGemelos: 0.001,
         xGemelo: null,
-        historialGemelo: [], // { t, d, logD }
-        satGemelo: false,
+        historialGemelos: [], // { t, d, logD }
+        lambdaFit: 0.0,
+        lambdaFitAdim: 0.0,
 
-        // Estado lineal (Modo Lineal)
-        xLineal: null,
-        historialLineal: [], // { t, th2Nonlin, th2Lin, diff }
-
-        // Estado Nube (Modo Nube)
-        nubePendulos: [],
-        nubeFlips: [],
-
-        // Arrastre interactivo
-        arrastrandoMasa: 0, // 0: ninguna, 1: masa 1, 2: masa 2
+        // Estado Monte Carlo Dual
+        mc: {
+            corriendo: false,
+            t: 0.0,
+            tMax: 30.0,
+            dt: 0.01,
+            n: 300,
+            sigma: 0.010,
+            targetDerecho: 'alta', // 'alta' o 'actual'
+            left: {
+                x0: [0.6, 0.6, 0.0, 0.0],
+                pendulos: [], // array de [th1, th2, w1, w2]
+                flips: [],
+                th2Continuo: []
+            },
+            right: {
+                x0: [2.6, 2.6, 0.0, 0.0],
+                pendulos: [],
+                flips: [],
+                th2Continuo: []
+            },
+            statsLeft: null,
+            statsRight: null
+        },
 
         // Mapa FTLE
-        ftleData: null,
-        ftleWorker: null,
-        ftleCalculando: false
+        ftle: {
+            gridObj: null,
+            imgBitmap: null,
+            offCanvas: null,
+            inspectTh1: 0.0,
+            inspectTh2: 0.0,
+            inspectVal: 0.0,
+            calculando: false,
+            worker: null
+        },
+
+        // Arrastre interactivo en el péndulo
+        arrastre: {
+            activo: false,
+            masa: 0 // 1 o 2
+        }
     };
 
     // =========================================================================
-    // 3. ELEMENTOS DOM Y CANVAS
+    // 3. REFERENCIAS A ELEMENTOS DEL DOM
     // =========================================================================
-    var dom = {
-        body: document.body,
-        simCanvas: document.getElementById('sim-canvas'),
-        canvasWrapper: document.getElementById('canvas-wrapper'),
-        linearWarning: document.getElementById('linear-range-warning'),
-        
-        // HUD
-        valTime: document.getElementById('val-time'),
-        valEnergyTotal: document.getElementById('val-energy-total'),
-        valDeltaE: document.getElementById('val-delta-e'),
-        valFlipsM2: document.getElementById('val-flips-m2'),
+    var dom = {};
 
-        // Barra de Energía
-        fillKinetic: document.getElementById('energy-fill-kinetic'),
-        fillPotential: document.getElementById('energy-fill-potential'),
-        markerM2: document.getElementById('marker-ec-m2'),
-        markerM1: document.getElementById('marker-ec-m1'),
-        markerAmbas: document.getElementById('marker-ec-ambas'),
-        valEnergyK: document.getElementById('val-energy-k'),
-        valEnergyV: document.getElementById('val-energy-v'),
-        valEnergyE: document.getElementById('val-energy-e'),
-        lblEcM2Val: document.getElementById('lbl-ec-m2-val'),
-        lblEcM1Val: document.getElementById('lbl-ec-m1-val'),
-        lblEcAmbasVal: document.getElementById('lbl-ec-ambas-val'),
+    function initDomReferences() {
+        dom.body = document.body;
 
-        // Gráficas en vivo (2x2)
-        chartAnglesCanvas: document.getElementById('chart-angles'),
-        chartPhaseCanvas: document.getElementById('chart-phase'),
-        chartEnergyCanvas: document.getElementById('chart-energy'),
-        contextualTitle: document.getElementById('contextual-panel-title'),
-        contextualMeta: document.getElementById('contextual-meta-text'),
-        
-        // Vistas contextuales
-        ftleContainer: document.getElementById('ftle-map-container'),
-        ftleCanvas: document.getElementById('ftle-canvas'),
-        ftleTh1: document.getElementById('ftle-th1'),
-        ftleTh2: document.getElementById('ftle-th2'),
-        ftleVal: document.getElementById('ftle-val'),
-        gemeloContainer: document.getElementById('gemelo-container'),
-        gemeloCanvas: document.getElementById('gemelo-canvas'),
-        linealContainer: document.getElementById('lineal-container'),
-        linealCanvas: document.getElementById('lineal-canvas'),
-        nubeContainer: document.getElementById('nube-container'),
-        nubeCanvas: document.getElementById('nube-canvas'),
+        // Pestañas
+        dom.tabBtns = document.querySelectorAll('.mode-tab-btn');
+        dom.tabViews = {
+            pendulo: document.getElementById('view-pendulo'),
+            gemelos: document.getElementById('view-gemelos'),
+            montecarlo: document.getElementById('view-montecarlo'),
+            mapacaos: document.getElementById('view-mapacaos')
+        };
+        dom.controlsTab = {
+            pendulo: document.getElementById('controls-tab-pendulo'),
+            gemelos: document.getElementById('controls-tab-gemelos'),
+            montecarlo: document.getElementById('controls-tab-montecarlo'),
+            mapacaos: document.getElementById('controls-tab-mapacaos')
+        };
 
-        // Botones y Transporte
-        btnPlayPause: document.getElementById('btn-play-pause'),
-        btnStep: document.getElementById('btn-step'),
-        btnReset: document.getElementById('btn-reset'),
-        selectSpeed: document.getElementById('select-speed'),
-        checkTrace: document.getElementById('check-trace'),
-        btnThemeToggle: document.getElementById('btn-theme-toggle'),
-        themeIcon: document.getElementById('theme-icon'),
-        themeText: document.getElementById('theme-text'),
-        btnDrawerToggle: document.getElementById('btn-drawer-toggle'),
-        btnDrawerClose: document.getElementById('btn-drawer-close'),
-        drawerPanel: document.getElementById('drawer-panel'),
-        btnPresentation: document.getElementById('btn-presentation'),
+        // Cabecera
+        dom.btnThemeToggle = document.getElementById('btn-theme-toggle');
+        dom.themeIcon = document.getElementById('theme-icon');
+        dom.themeText = document.getElementById('theme-text');
+        dom.btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+        dom.btnPresentation = document.getElementById('btn-presentation');
+        dom.sidebar = document.getElementById('sidebar-controls');
 
-        // Sliders de parámetros
-        sliderG: document.getElementById('slider-g'),
-        lblG: document.getElementById('lbl-g'),
-        sliderL1: document.getElementById('slider-l1'),
-        lblL1: document.getElementById('lbl-l1'),
-        sliderL2: document.getElementById('slider-l2'),
-        lblL2: document.getElementById('lbl-l2'),
-        sliderM1: document.getElementById('slider-m1'),
-        lblM1: document.getElementById('lbl-m1'),
-        sliderM2: document.getElementById('slider-m2'),
-        lblM2: document.getElementById('lbl-m2'),
-        lblMu: document.getElementById('lbl-mu'),
-        lblLambda: document.getElementById('lbl-lambda'),
+        // Transporte
+        dom.btnPlayPause = document.getElementById('btn-play-pause');
+        dom.btnReset = document.getElementById('btn-reset');
+        dom.btnStep = document.getElementById('btn-step');
+
+        // Presets
+        dom.presetBtns = document.querySelectorAll('.btn-preset');
 
         // Sliders CI
-        sliderTh1: document.getElementById('slider-th1'),
-        lblTh1: document.getElementById('lbl-th1'),
-        sliderTh2: document.getElementById('slider-th2'),
-        lblTh2: document.getElementById('lbl-th2'),
-        sliderW1: document.getElementById('slider-w1'),
-        lblW1: document.getElementById('lbl-w1'),
-        sliderW2: document.getElementById('slider-w2'),
-        lblW2: document.getElementById('lbl-w2'),
+        dom.sliderTh1 = document.getElementById('slider-th1');
+        dom.sliderTh2 = document.getElementById('slider-th2');
+        dom.sliderW1 = document.getElementById('slider-w1');
+        dom.sliderW2 = document.getElementById('slider-w2');
+        dom.lblTh1 = document.getElementById('lbl-th1');
+        dom.lblTh2 = document.getElementById('lbl-th2');
+        dom.lblW1 = document.getElementById('lbl-w1');
+        dom.lblW2 = document.getElementById('lbl-w2');
 
-        // Integradores
-        btnIntegRK4: document.getElementById('btn-integ-rk4'),
-        btnIntegClasico: document.getElementById('btn-integ-clasico'),
+        // Sliders Parámetros
+        dom.sliderM1 = document.getElementById('slider-m1');
+        dom.sliderM2 = document.getElementById('slider-m2');
+        dom.sliderL1 = document.getElementById('slider-l1');
+        dom.sliderL2 = document.getElementById('slider-l2');
+        dom.lblM1 = document.getElementById('lbl-m1');
+        dom.lblM2 = document.getElementById('lbl-m2');
+        dom.lblL1 = document.getElementById('lbl-l1');
+        dom.lblL2 = document.getElementById('lbl-l2');
+        dom.lblMu = document.getElementById('lbl-mu');
+        dom.lblLambda = document.getElementById('lbl-lambda');
+
+        // Gravedad
+        dom.gravityBtns = document.querySelectorAll('.btn-gravity');
+        dom.sliderG = document.getElementById('slider-g');
+        dom.lblG = document.getElementById('lbl-g');
+
+        // Péndulo
+        dom.canvasPenduloMain = document.getElementById('canvas-pendulo-main');
+        dom.canvasPenduloChart = document.getElementById('canvas-pendulo-chart');
+        dom.bigAngleTh1 = document.getElementById('big-angle-th1');
+        dom.bigAngleTh2 = document.getElementById('big-angle-th2');
+        dom.bigTime = document.getElementById('big-time');
+        dom.linearWarning = document.getElementById('linear-range-warning');
+        dom.checkLinearMode = document.getElementById('check-linear-mode');
+        dom.btnTogglePhaseChart = document.getElementById('btn-toggle-phase-chart');
+        dom.chartPenduloTitle = document.getElementById('chart-pendulo-title');
+        dom.chartPenduloCaption = document.getElementById('chart-pendulo-caption');
+
+        // Termómetro
+        dom.thermometerFill = document.getElementById('thermometer-fill');
+        dom.markM2 = document.getElementById('mark-m2');
+        dom.markM1 = document.getElementById('mark-m1');
+        dom.markAmbas = document.getElementById('mark-ambas');
+        dom.markLblM2 = document.getElementById('mark-lbl-m2');
+        dom.markLblM1 = document.getElementById('mark-lbl-m1');
+        dom.markLblAmbas = document.getElementById('mark-lbl-ambas');
+        dom.readoutTotalE = document.getElementById('readout-total-e');
+        dom.readoutFlips = document.getElementById('readout-flips');
+
+        // Gemelos
+        dom.canvasGemelosStage = document.getElementById('canvas-gemelos-stage');
+        dom.canvasGemelosSeparation = document.getElementById('canvas-gemelos-separation');
+        dom.sliderDeltaGemelos = document.getElementById('slider-delta-gemelos');
+        dom.lblDeltaGemelos = document.getElementById('lbl-delta-gemelos');
+        dom.btnGemelosRegular = document.getElementById('btn-gemelos-regular');
+        dom.btnGemelosCaotico = document.getElementById('btn-gemelos-caotico');
+        dom.lblLambdaFit = document.getElementById('lbl-lambda-fit');
+        dom.lblLambdaAdim = document.getElementById('lbl-lambda-adim');
+        dom.gemelosBadge = document.getElementById('gemelos-status-badge');
 
         // Monte Carlo
-        montecarloPanel: document.getElementById('montecarlo-panel'),
-        mcBaseLabel: document.getElementById('mc-base-label'),
-        btnMcUseCurrent: document.getElementById('btn-mc-use-current'),
-        mcSliderN: document.getElementById('mc-slider-n'),
-        mcLblN: document.getElementById('mc-lbl-n'),
-        mcSliderSigma: document.getElementById('mc-slider-sigma'),
-        mcLblSigma: document.getElementById('mc-lbl-sigma'),
-        mcSliderRho: document.getElementById('mc-slider-rho'),
-        mcLblRho: document.getElementById('mc-lbl-rho'),
-        mcSliderT: document.getElementById('mc-slider-t'),
-        mcLblT: document.getElementById('mc-lbl-t'),
-        mcSeedInput: document.getElementById('mc-seed-input'),
-        btnMcRun: document.getElementById('btn-mc-run'),
-        btnMcCompareLow: document.getElementById('btn-mc-compare-low'),
-        btnMcReplayCloud: document.getElementById('btn-mc-replay-cloud'),
-        mcProgressFill: document.getElementById('mc-progress-fill'),
-        mcProgressText: document.getElementById('mc-progress-text'),
-        mcValMean: document.getElementById('mc-val-mean'),
-        mcCiMean: document.getElementById('mc-ci-mean'),
-        mcValStd: document.getElementById('mc-val-std'),
-        mcCiStd: document.getElementById('mc-ci-std'),
-        mcValPflip: document.getElementById('mc-val-pflip'),
-        mcCiWilson: document.getElementById('mc-ci-wilson'),
-        mcHistogramCanvas: document.getElementById('mc-histogram-canvas')
-    };
+        dom.canvasMcStageLeft = document.getElementById('canvas-mc-stage-left');
+        dom.canvasMcHistLeft = document.getElementById('canvas-mc-hist-left');
+        dom.canvasMcStageRight = document.getElementById('canvas-mc-stage-right');
+        dom.canvasMcHistRight = document.getElementById('canvas-mc-hist-right');
+        dom.sliderMcN = document.getElementById('slider-mc-n');
+        dom.sliderMcSigma = document.getElementById('slider-mc-sigma');
+        dom.sliderMcT = document.getElementById('slider-mc-t');
+        dom.lblMcN = document.getElementById('lbl-mc-n');
+        dom.lblMcSigma = document.getElementById('lbl-mc-sigma');
+        dom.lblMcT = document.getElementById('lbl-mc-t');
+        dom.selectMcRightTarget = document.getElementById('select-mc-right-target');
+        dom.btnRunMontecarlo = document.getElementById('btn-run-montecarlo');
+        dom.mcRightTitle = document.getElementById('mc-right-title');
+        dom.mcRightSub = document.getElementById('mc-right-sub');
 
-    // =========================================================================
-    // 4. INICIALIZACIÓN DE CONTEXTOS CANVAS (CON DEVICE PIXEL RATIO)
-    // =========================================================================
-    function ajustarCanvas(canvas) {
-        if (!canvas) return null;
-        var dpr = window.devicePixelRatio || 1;
-        var rect = canvas.getBoundingClientRect();
-        var ancho = Math.floor(rect.width * dpr);
-        var alto = Math.floor(rect.height * dpr);
+        dom.mcLeftMean = document.getElementById('mc-left-mean');
+        dom.mcLeftCiMean = document.getElementById('mc-left-ci-mean');
+        dom.mcLeftStd = document.getElementById('mc-left-std');
+        dom.mcLeftCiStd = document.getElementById('mc-left-ci-std');
+        dom.mcLeftPflip = document.getElementById('mc-left-pflip');
+        dom.mcLeftCiWilson = document.getElementById('mc-left-ci-wilson');
 
-        if (canvas.width !== ancho || canvas.height !== alto) {
-            canvas.width = ancho;
-            canvas.height = alto;
-        }
-        var ctx = canvas.getContext('2d');
-        ctx.resetTransform();
-        ctx.scale(dpr, dpr);
-        return { ctx: ctx, width: rect.width, height: rect.height, dpr: dpr };
+        dom.mcRightMean = document.getElementById('mc-right-mean');
+        dom.mcRightCiMean = document.getElementById('mc-right-ci-mean');
+        dom.mcRightStd = document.getElementById('mc-right-std');
+        dom.mcRightCiStd = document.getElementById('mc-right-ci-std');
+        dom.mcRightPflip = document.getElementById('mc-right-pflip');
+        dom.mcRightCiWilson = document.getElementById('mc-right-ci-wilson');
+
+        // Mapa de Caos
+        dom.canvasMapaCaos = document.getElementById('canvas-mapacaos-main');
+        dom.mapacaosBox = document.getElementById('mapacaos-box');
+        dom.mapaInspectTh1 = document.getElementById('mapa-inspect-th1');
+        dom.mapaInspectTh2 = document.getElementById('mapa-inspect-th2');
+        dom.mapaInspectLambda = document.getElementById('mapa-inspect-lambda');
+        dom.btnVerEnPendulo = document.getElementById('btn-ver-en-pendulo');
+
+        // Avanzado
+        dom.selectIntegrator = document.getElementById('select-integrator');
+        dom.selectSpeed = document.getElementById('select-speed');
+        dom.checkTrace = document.getElementById('check-trace');
+        dom.valErrorDeltaE = document.getElementById('val-error-delta-e');
     }
 
     // =========================================================================
-    // 5. GESTIÓN DEL TEMA (OSCURO / CLARO)
+    // 4. INICIALIZACIÓN Y CONFIGURACIÓN FÍSICA
     // =========================================================================
-    function alternarTema() {
-        if (temaActual === 'dark') {
-            temaActual = 'light';
-            dom.body.classList.remove('theme-dark');
-            dom.body.classList.add('theme-light');
-            dom.themeIcon.textContent = '☀️';
-            dom.themeText.textContent = 'Claro';
-        } else {
-            temaActual = 'dark';
-            dom.body.classList.remove('theme-light');
-            dom.body.classList.add('theme-dark');
-            dom.themeIcon.textContent = '🌙';
-            dom.themeText.textContent = 'Oscuro';
-        }
-        actualizarUmbralesEnergiaUI();
-    }
+    function inicializarSimulacion() {
+        estado.params = PenduloFisica.crearParametros(
+            parseFloat(dom.sliderM1.value),
+            parseFloat(dom.sliderM2.value),
+            parseFloat(dom.sliderL1.value),
+            parseFloat(dom.sliderL2.value),
+            parseFloat(dom.sliderG.value)
+        );
+        estado.linInfo = PenduloFisica.linealizacion(estado.params);
 
-    // =========================================================================
-    // 6. MOTOR DE FÍSICA Y REINICIO
-    // =========================================================================
-    function calcularPasoFisica(xActual, dt, params) {
-        if (estado.algoritmo === 'rk4_clasico') {
-            return PenduloFisica.pasoRK4Clasico(xActual, dt, params);
-        }
-        return PenduloFisica.pasoRK4(xActual, dt, params);
-    }
+        var th1 = parseFloat(dom.sliderTh1.value) * (Math.PI / 180.0);
+        var th2 = parseFloat(dom.sliderTh2.value) * (Math.PI / 180.0);
+        var w1 = parseFloat(dom.sliderW1.value);
+        var w2 = parseFloat(dom.sliderW2.value);
 
-    function reiniciarSimulacion() {
+        estado.x0 = [th1, th2, w1, w2];
+        estado.x = [th1, th2, w1, w2];
+        estado.xLineal = [th1, th2, w1, w2];
         estado.t = 0.0;
-        estado.x = [estado.x0[0], estado.x0[1], estado.x0[2], estado.x0[3]];
-        estado.theta1Continuo = estado.x0[0];
-        estado.theta2Continuo = estado.x0[1];
+        estado.theta1Continuo = th1;
+        estado.theta2Continuo = th2;
         estado.vueltasM1 = 0;
         estado.vueltasM2 = 0;
-        estado.estelaM2 = [];
-        estado.historialTiempo = [];
 
         estado.e0 = PenduloFisica.energiaTotal(estado.x, estado.params);
         estado.deltaERel = 0.0;
 
-        // Modo Gemelo
-        if (estado.modo === 'gemelo') {
-            var pert = 1e-7;
-            estado.xGemelo = [estado.x0[0] + pert, estado.x0[1], estado.x0[2], estado.x0[3]];
-            estado.historialGemelo = [];
-            estado.satGemelo = false;
+        estado.estelaM2 = [];
+        estado.historialTiempo = [];
+
+        // Inicializar Gemelo
+        var dVal = parseFloat(dom.sliderDeltaGemelos.value);
+        estado.deltaGemelos = dVal;
+        estado.xGemelo = [th1 + dVal, th2 + dVal, w1, w2];
+        estado.historialGemelos = [];
+        estado.lambdaFit = 0.0;
+        estado.lambdaFitAdim = 0.0;
+
+        registrarHistorialPunto();
+        actualizarTermometroEnergia();
+        actualizarIndicadoresHUD();
+        actualizarParametrosLabels();
+
+        // Si la pestaña actual es Monte Carlo, reiniciar también Monte Carlo
+        if (estado.tabActiva === 'montecarlo') {
+            reiniciarMonteCarlo();
         }
 
-        // Modo Lineal
-        if (estado.modo === 'lineal') {
-            estado.xLineal = [estado.x0[0], estado.x0[1], estado.x0[2], estado.x0[3]];
-            estado.historialLineal = [];
-        }
-
-        // Modo Nube
-        if (estado.modo === 'nube') {
-            inicializarNube(200, 0.01);
-        }
-
-        actualizarUmbralesEnergiaUI();
-        actualizarLabelsParametros();
+        // Si el mapa ya tiene retícula, redibujar la cruz
+        redibujarMapaCaos();
     }
 
-    function inicializarNube(n, sigma) {
-        var rng = PenduloFisica.mulberry32(20261119);
-        estado.nubePendulos = [];
-        estado.nubeFlips = new Int32Array(n);
+    function registrarHistorialPunto() {
+        var x = estado.x;
+        var p = estado.params;
+        var xLin = estado.xLineal;
 
-        for (var i = 0; i < n; i++) {
-            // Box-Muller simple
-            var u1 = Math.max(1e-12, rng());
-            var u2 = rng();
-            var z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-            var z2 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
-
-            var th1 = estado.x0[0] + sigma * z1;
-            var th2 = estado.x0[1] + sigma * z2;
-            estado.nubePendulos.push({
-                x: [th1, th2, 0.0, 0.0],
-                th2Cont: th2,
-                flips: 0
-            });
-        }
-    }
-
-    function actualizarUmbralesEnergiaUI() {
-        var u = PenduloFisica.umbralesEnergia(estado.params);
-        var ecAmbas = u.Ec_ambas;
-
-        dom.lblEcM2Val.textContent = u.Ec_m2.toFixed(2);
-        dom.lblEcM1Val.textContent = u.Ec_m1.toFixed(2);
-        dom.lblEcAmbasVal.textContent = ecAmbas.toFixed(2);
-
-        // Posiciones relativas en la barra de energía
-        var pM2 = Math.min(100, Math.max(0, (u.Ec_m2 / ecAmbas) * 100));
-        var pM1 = Math.min(100, Math.max(0, (u.Ec_m1 / ecAmbas) * 100));
-        var pAmbas = 100;
-
-        dom.markerM2.style.left = pM2 + '%';
-        dom.markerM1.style.left = pM1 + '%';
-        dom.markerAmbas.style.left = pAmbas + '%';
-    }
-
-    function actualizarLabelsParametros() {
-        dom.lblG.textContent = estado.params.g.toFixed(2) + ' m/s²';
-        dom.lblL1.textContent = estado.params.l1.toFixed(2) + ' m';
-        dom.lblL2.textContent = estado.params.l2.toFixed(2) + ' m';
-        dom.lblM1.textContent = estado.params.m1.toFixed(2) + ' kg';
-        dom.lblM2.textContent = estado.params.m2.toFixed(2) + ' kg';
-
-        var mu = estado.params.m2 / estado.params.m1;
-        var lambda = estado.params.l2 / estado.params.l1;
-        dom.lblMu.textContent = mu.toFixed(2);
-        dom.lblLambda.textContent = lambda.toFixed(2);
-
-        dom.lblTh1.textContent = Math.round(estado.x0[0] * 180 / Math.PI) + '°';
-        dom.lblTh2.textContent = Math.round(estado.x0[1] * 180 / Math.PI) + '°';
-        dom.lblW1.textContent = estado.x0[2].toFixed(1) + ' rad/s';
-        dom.lblW2.textContent = estado.x0[3].toFixed(1) + ' rad/s';
-
-        // Actualizar valores de sliders
-        dom.sliderG.value = estado.params.g;
-        dom.sliderL1.value = estado.params.l1;
-        dom.sliderL2.value = estado.params.l2;
-        dom.sliderM1.value = estado.params.m1;
-        dom.sliderM2.value = estado.params.m2;
-        dom.sliderTh1.value = Math.round(estado.x0[0] * 180 / Math.PI);
-        dom.sliderTh2.value = Math.round(estado.x0[1] * 180 / Math.PI);
-        dom.sliderW1.value = estado.x0[2];
-        dom.sliderW2.value = estado.x0[3];
-    }
-
-    // =========================================================================
-    // 7. PASO DE SIMULACIÓN Y ACTUALIZACIÓN DE ESTADO
-    // =========================================================================
-    function pasoSimulacion(dtPaso) {
-        var xPrev = estado.x;
-        var xNext = calcularPasoFisica(xPrev, dtPaso, estado.params);
-
-        // Detección de vueltas mediante ángulo acumulado continuo
-        var dTh2 = xNext[1] - xPrev[1];
-        // Desenrollar diferencias angulares mayores a pi
-        dTh2 = ((dTh2 + Math.PI) % (2.0 * Math.PI)) - Math.PI;
-        estado.theta2Continuo += dTh2;
-        var nuevasVueltasM2 = Math.abs(PenduloFisica.indiceVuelta(estado.theta2Continuo));
-
-        if (nuevasVueltasM2 !== estado.vueltasM2) {
-            estado.vueltasM2 = nuevasVueltasM2;
-            animarPulsoVueltas();
-        }
-
-        var dTh1 = xNext[0] - xPrev[0];
-        dTh1 = ((dTh1 + Math.PI) % (2.0 * Math.PI)) - Math.PI;
-        estado.theta1Continuo += dTh1;
-        estado.vueltasM1 = Math.abs(PenduloFisica.indiceVuelta(estado.theta1Continuo));
-
-        estado.x = xNext;
-        estado.t += dtPaso;
-
-        // Cálculos de energía
-        var eK = PenduloFisica.energiaCinetica(estado.x, estado.params);
-        var eV = PenduloFisica.energiaPotencial(estado.x, estado.params);
-        var eTotal = eK + eV;
-        if (Math.abs(estado.e0) > 1e-12) {
-            estado.deltaERel = Math.abs(eTotal - estado.e0) / Math.abs(estado.e0);
-        } else {
-            estado.deltaERel = Math.abs(eTotal - estado.e0);
-        }
-
-        // Registrar estela de la masa 2
-        var pos = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
-        // Rapidez puntual de la masa 2
-        var vx2 = estado.params.l1 * Math.cos(estado.x[0]) * estado.x[2] +
-                  estado.params.l2 * Math.cos(estado.x[1]) * estado.x[3];
-        var vy2 = estado.params.l1 * Math.sin(estado.x[0]) * estado.x[2] +
-                  estado.params.l2 * Math.sin(estado.x[1]) * estado.x[3];
-        var rapidez = Math.sqrt(vx2 * vx2 + vy2 * vy2);
-
-        estado.estelaM2.push({
-            x: pos.x2,
-            y: pos.y2,
-            v: rapidez,
-            t: estado.t
-        });
-        if (estado.estelaM2.length > 1500) {
+        // Posiciones cartesianas masa 2 para estela
+        var pos = PenduloFisica.posicionesCartesianas(x, p);
+        var v2Sq = x[3] * x[3] * (p.l2 * p.l2);
+        estado.estelaM2.push({ x: pos.x2, y: pos.y2, v2Sq: v2Sq });
+        if (estado.estelaM2.length > 1200) {
             estado.estelaM2.shift();
         }
 
-        // Historial para gráficas en vivo (últimos 20 s)
+        // Historial tiempo (ventana rodante de 20s)
         estado.historialTiempo.push({
             t: estado.t,
-            th1: estado.x[0],
-            th2: estado.x[1],
-            w1: estado.x[2],
-            w2: estado.x[3],
-            T: eK,
-            V: eV,
-            E: eTotal,
-            errLog: Math.max(-14, Math.log10(Math.max(1e-14, estado.deltaERel)))
+            th1: x[0],
+            th2: x[1],
+            w1: x[2],
+            w2: x[3],
+            th1Lin: xLin[0],
+            th2Lin: xLin[1]
         });
 
-        // Poda de ventana deslizante
-        var tMin = estado.t - estado.ventanaHistorialS;
-        while (estado.historialTiempo.length > 1 && estado.historialTiempo[0].t < tMin) {
+        var tMin = estado.t - estado.ventanaS;
+        while (estado.historialTiempo.length > 2 && estado.historialTiempo[0].t < tMin) {
             estado.historialTiempo.shift();
         }
 
-        // Actualizaciones de modos especiales
-        if (estado.modo === 'gemelo' && estado.xGemelo) {
-            estado.xGemelo = calcularPasoFisica(estado.xGemelo, dtPaso, estado.params);
-            var d1 = estado.x[0] - estado.xGemelo[0];
-            var d2 = estado.x[1] - estado.xGemelo[1];
-            var dw1 = estado.x[2] - estado.xGemelo[2];
-            var dw2 = estado.x[3] - estado.xGemelo[3];
-            var sep = Math.sqrt(d1 * d1 + d2 * d2 + dw1 * dw1 + dw2 * dw2);
-            var logSep = Math.log10(Math.max(1e-15, sep));
-            estado.historialGemelo.push({ t: estado.t, d: sep, logD: logSep });
-            if (sep >= 0.5) {
-                estado.satGemelo = true;
-            }
-            if (estado.historialGemelo.length > 2000) estado.historialGemelo.shift();
-        }
+        // Historial Gemelos
+        if (estado.xGemelo) {
+            var diff0 = estado.x[0] - estado.xGemelo[0];
+            var diff1 = estado.x[1] - estado.xGemelo[1];
+            var diff2 = estado.x[2] - estado.xGemelo[2];
+            var diff3 = estado.x[3] - estado.xGemelo[3];
+            var d = Math.sqrt(diff0 * diff0 + diff1 * diff1 + diff2 * diff2 + diff3 * diff3);
+            if (d < 1e-12) d = 1e-12;
+            var logD = Math.log10(d);
 
-        if (estado.modo === 'lineal' && estado.xLineal) {
-            var linInfo = PenduloFisica.linealizacion(estado.params);
-            estado.xLineal = PenduloFisica.pasoLinealRK4(estado.xLineal, dtPaso, linInfo);
-            var diffTh2 = Math.abs(estado.x[1] - estado.xLineal[1]);
-            estado.historialLineal.push({
+            estado.historialGemelos.push({
                 t: estado.t,
-                th2Nonlin: estado.x[1],
-                th2Lin: estado.xLineal[1],
-                diff: diffTh2
+                d: d,
+                logD: logD
             });
-            if (estado.historialLineal.length > 2000) estado.historialLineal.shift();
+
+            if (estado.historialGemelos.length > 3000) {
+                estado.historialGemelos.shift();
+            }
+
+            calcularAjusteLyapunov();
+        }
+    }
+
+    function calcularAjusteLyapunov() {
+        var h = estado.historialGemelos;
+        if (h.length < 50) return;
+
+        // Buscamos la fase inicial de crecimiento exponencial antes de saturar (d < 2.0)
+        var puntos = [];
+        var t0 = h[0].t;
+        for (var i = 0; i < h.length; i++) {
+            if (h[i].d > 2.5) break; // Saturó a escala del atractor
+            puntos.push({ t: h[i].t - t0, logE: Math.log(h[i].d) });
         }
 
-        if (estado.modo === 'nube') {
-            for (var k = 0; k < estado.nubePendulos.length; k++) {
-                var p = estado.nubePendulos[k];
-                var prevTh2 = p.x[1];
-                p.x = calcularPasoFisica(p.x, dtPaso, estado.params);
-                var delta = ((p.x[1] - prevTh2 + Math.PI) % (2.0 * Math.PI)) - Math.PI;
-                p.th2Cont += delta;
-                p.flips = Math.abs(PenduloFisica.indiceVuelta(p.th2Cont));
-                estado.nubeFlips[k] = p.flips;
+        if (puntos.length < 30) {
+            estado.lambdaFit = 0.0;
+            estado.lambdaFitAdim = 0.0;
+            return;
+        }
+
+        // Regresión lineal simple: log(d) = a + lambda * t
+        var sumT = 0, sumL = 0, sumT2 = 0, sumTL = 0;
+        var n = puntos.length;
+        for (var j = 0; j < n; j++) {
+            sumT += puntos[j].t;
+            sumL += puntos[j].logE;
+            sumT2 += puntos[j].t * puntos[j].t;
+            sumTL += puntos[j].t * puntos[j].logE;
+        }
+        var denom = (n * sumT2 - sumT * sumT);
+        if (Math.abs(denom) > 1e-12) {
+            var lambda = (n * sumTL - sumT * sumL) / denom;
+            if (lambda < 0) lambda = 0;
+            estado.lambdaFit = lambda;
+            var escalaTiempo = Math.sqrt(estado.params.l1 / estado.params.g);
+            estado.lambdaFitAdim = lambda * Math.sqrt(estado.params.l1 / estado.params.g);
+        }
+
+        // Actualizar badges
+        dom.lblLambdaFit.textContent = 'λ ≈ ' + estado.lambdaFit.toFixed(2) + ' s⁻¹';
+        dom.lblLambdaAdim.textContent = '(adimensional: λ·√(l₁/g) ≈ ' + estado.lambdaFitAdim.toFixed(2) + ')';
+
+        if (estado.lambdaFit > 0.35) {
+            dom.gemelosBadge.textContent = 'Caótico (separación exponencial)';
+            dom.gemelosBadge.style.background = 'rgba(247, 37, 133, 0.2)';
+            dom.gemelosBadge.style.color = '#f72585';
+            dom.gemelosBadge.style.borderColor = 'rgba(247, 37, 133, 0.4)';
+        } else {
+            dom.gemelosBadge.textContent = 'Regular (separación lenta/acotada)';
+            dom.gemelosBadge.style.background = 'rgba(76, 201, 240, 0.2)';
+            dom.gemelosBadge.style.color = '#4cc9f0';
+            dom.gemelosBadge.style.borderColor = 'rgba(76, 201, 240, 0.4)';
+        }
+    }
+
+    // =========================================================================
+    // 5. PASO DE SIMULACIÓN NUMÉRICA
+    // =========================================================================
+    function pasoSimulacion(dtEfectivo) {
+        var pasoFunc = (estado.algoritmo === 'rk4_clasico')
+            ? PenduloFisica.pasoRK4Clasico
+            : PenduloFisica.pasoRK4;
+
+        // Integrar péndulo principal
+        var xAnt = estado.x;
+        estado.x = pasoFunc(estado.x, dtEfectivo, estado.params);
+        estado.t += dtEfectivo;
+
+        // Vueltas continuas
+        var dTh2 = estado.x[1] - xAnt[1];
+        estado.theta2Continuo += dTh2;
+        estado.vueltasM2 = PenduloFisica.indiceVuelta(estado.theta2Continuo);
+
+        var dTh1 = estado.x[0] - xAnt[0];
+        estado.theta1Continuo += dTh1;
+        estado.vueltasM1 = PenduloFisica.indiceVuelta(estado.theta1Continuo);
+
+        // Integrar modelo lineal si está activo o en historial
+        if (!estado.linInfo) {
+            estado.linInfo = PenduloFisica.linealizacion(estado.params);
+        }
+        estado.xLineal = PenduloFisica.pasoLinealRK4(estado.xLineal, dtEfectivo, estado.linInfo);
+
+        // Integrar gemelo
+        if (estado.xGemelo) {
+            estado.xGemelo = pasoFunc(estado.xGemelo, dtEfectivo, estado.params);
+        }
+
+        // Conservación de energía
+        var eActual = PenduloFisica.energiaTotal(estado.x, estado.params);
+        if (Math.abs(estado.e0) > 1e-12) {
+            estado.deltaERel = Math.abs(eActual - estado.e0) / Math.abs(estado.e0);
+        } else {
+            estado.deltaERel = Math.abs(eActual - estado.e0);
+        }
+    }
+
+    // =========================================================================
+    // 6. MONTE CARLO DUAL LADO A LADO
+    // =========================================================================
+    function reiniciarMonteCarlo() {
+        var n = parseInt(dom.sliderMcN.value, 10);
+        var sigma = parseFloat(dom.sliderMcSigma.value);
+        var tMax = parseFloat(dom.sliderMcT.value);
+        var targetDerecho = dom.selectMcRightTarget.value;
+
+        estado.mc.n = n;
+        estado.mc.sigma = sigma;
+        estado.mc.tMax = tMax;
+        estado.mc.t = 0.0;
+        estado.mc.targetDerecho = targetDerecho;
+        estado.mc.corriendo = true;
+
+        // Panel Izquierdo: Siempre Baja Energía (0.6, 0.6)
+        estado.mc.left.x0 = [0.6, 0.6, 0.0, 0.0];
+        estado.mc.left.pendulos = [];
+        estado.mc.left.flips = new Array(n).fill(0);
+        estado.mc.left.th2Continuo = new Array(n).fill(0.6);
+
+        // Panel Derecho: Alta Energía (2.6, 2.6) o Condición Actual
+        if (targetDerecho === 'actual') {
+            estado.mc.right.x0 = [estado.x0[0], estado.x0[1], estado.x0[2], estado.x0[3]];
+            dom.mcRightTitle.textContent = 'Condición actual (' + (estado.x0[0] * 180 / Math.PI).toFixed(0) + '°, ' + (estado.x0[1] * 180 / Math.PI).toFixed(0) + '°)';
+            dom.mcRightSub.textContent = 'E = ' + estado.e0.toFixed(1) + ' J';
+        } else {
+            estado.mc.right.x0 = [2.6, 2.6, 0.0, 0.0];
+            dom.mcRightTitle.textContent = 'Alta energía (2.6 rad, 2.6 rad)';
+            dom.mcRightSub.textContent = 'E > Ec_m2 (régimen caótico)';
+        }
+        estado.mc.right.pendulos = [];
+        estado.mc.right.flips = new Array(n).fill(0);
+        estado.mc.right.th2Continuo = new Array(n).fill(estado.mc.right.x0[1]);
+
+        // Generar partículas con mulberry32 determinista
+        var rngL = PenduloFisica.mulberry32(12345);
+        for (var i = 0; i < n; i++) {
+            // Box-Muller para distribución normal N(0, sigma)
+            var u1 = Math.max(1e-12, rngL());
+            var u2 = rngL();
+            var z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+            var z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+
+            var th1L = estado.mc.left.x0[0] + sigma * z0;
+            var th2L = estado.mc.left.x0[1] + sigma * z1;
+            estado.mc.left.pendulos.push([th1L, th2L, 0.0, 0.0]);
+            estado.mc.left.th2Continuo[i] = th2L;
+        }
+
+        var rngR = PenduloFisica.mulberry32(67890);
+        for (var j = 0; j < n; j++) {
+            var u1r = Math.max(1e-12, rngR());
+            var u2r = rngR();
+            var z0r = Math.sqrt(-2.0 * Math.log(u1r)) * Math.cos(2.0 * Math.PI * u2r);
+            var z1r = Math.sqrt(-2.0 * Math.log(u1r)) * Math.sin(2.0 * Math.PI * u2r);
+
+            var th1R = estado.mc.right.x0[0] + sigma * z0r;
+            var th2R = estado.mc.right.x0[1] + sigma * z1r;
+            estado.mc.right.pendulos.push([th1R, th2R, estado.mc.right.x0[2], estado.mc.right.x0[3]]);
+            estado.mc.right.th2Continuo[j] = th2R;
+        }
+
+        actualizarEstadisticasMonteCarlo();
+    }
+
+    function pasoMonteCarlo(dtTotal) {
+        if (!estado.mc.corriendo) return;
+
+        var subDt = 0.005;
+        var subPasos = Math.max(1, Math.min(20, Math.round(dtTotal / subDt)));
+        var dtStep = dtTotal / subPasos;
+        var n = estado.mc.n;
+        var p = estado.params;
+        var pasoFunc = PenduloFisica.pasoRK4;
+
+        for (var s = 0; s < subPasos; s++) {
+            // Avanzar izquierda
+            for (var i = 0; i < n; i++) {
+                var xAntL = estado.mc.left.pendulos[i];
+                var xNextL = pasoFunc(xAntL, dtStep, p);
+                estado.mc.left.pendulos[i] = xNextL;
+
+                var dTh2L = xNextL[1] - xAntL[1];
+                estado.mc.left.th2Continuo[i] += dTh2L;
+                var kL = Math.abs(PenduloFisica.indiceVuelta(estado.mc.left.th2Continuo[i]));
+                if (kL > estado.mc.left.flips[i]) estado.mc.left.flips[i] = kL;
+            }
+
+            // Avanzar derecha
+            for (var j = 0; j < n; j++) {
+                var xAntR = estado.mc.right.pendulos[j];
+                var xNextR = pasoFunc(xAntR, dtStep, p);
+                estado.mc.right.pendulos[j] = xNextR;
+
+                var dTh2R = xNextR[1] - xAntR[1];
+                estado.mc.right.th2Continuo[j] += dTh2R;
+                var kR = Math.abs(PenduloFisica.indiceVuelta(estado.mc.right.th2Continuo[j]));
+                if (kR > estado.mc.right.flips[j]) estado.mc.right.flips[j] = kR;
+            }
+
+            estado.mc.t += dtStep;
+            if (estado.mc.t >= estado.mc.tMax) {
+                estado.mc.corriendo = false;
+                break;
             }
         }
+
+        actualizarEstadisticasMonteCarlo();
     }
 
-    function animarPulsoVueltas() {
-        dom.valFlipsM2.classList.remove('pulse');
-        void dom.valFlipsM2.offsetWidth; // Trigger reflow
-        dom.valFlipsM2.classList.add('pulse');
+    function actualizarEstadisticasMonteCarlo() {
+        var n = estado.mc.n;
+        var flipsL = estado.mc.left.flips;
+        var flipsR = estado.mc.right.flips;
+
+        // Estadísticos Panel Izquierdo
+        var bootL = PenduloFisica.bootstrapPercentil(flipsL, 1000, 42, 0.95);
+        var kFlipsL = 0;
+        for (var i = 0; i < n; i++) {
+            if (flipsL[i] > 0) kFlipsL++;
+        }
+        var wilsonL = PenduloFisica.intervaloWilson(kFlipsL, n);
+
+        dom.mcLeftMean.textContent = bootL.media.toFixed(2);
+        dom.mcLeftCiMean.textContent = 'IC 95%: [' + bootL.media_ci_bajo.toFixed(2) + ', ' + bootL.media_ci_alto.toFixed(2) + ']';
+        dom.mcLeftStd.textContent = bootL.std.toFixed(2);
+        dom.mcLeftCiStd.textContent = 'IC 95%: [' + bootL.std_ci_bajo.toFixed(2) + ', ' + bootL.std_ci_alto.toFixed(2) + ']';
+        dom.mcLeftPflip.textContent = (wilsonL.p * 100).toFixed(1) + '%';
+        dom.mcLeftCiWilson.textContent = 'Wilson: [' + (wilsonL.bajo * 100).toFixed(1) + '%, ' + (wilsonL.alto * 100).toFixed(1) + '%]';
+
+        // Estadísticos Panel Derecho
+        var bootR = PenduloFisica.bootstrapPercentil(flipsR, 1000, 43, 0.95);
+        var kFlipsR = 0;
+        for (var j = 0; j < n; j++) {
+            if (flipsR[j] > 0) kFlipsR++;
+        }
+        var wilsonR = PenduloFisica.intervaloWilson(kFlipsR, n);
+
+        dom.mcRightMean.textContent = bootR.media.toFixed(2);
+        dom.mcRightCiMean.textContent = 'IC 95%: [' + bootR.media_ci_bajo.toFixed(2) + ', ' + bootR.media_ci_alto.toFixed(2) + ']';
+        dom.mcRightStd.textContent = bootR.std.toFixed(2);
+        dom.mcRightCiStd.textContent = 'IC 95%: [' + bootR.std_ci_bajo.toFixed(2) + ', ' + bootR.std_ci_alto.toFixed(2) + ']';
+        dom.mcRightPflip.textContent = (wilsonR.p * 100).toFixed(1) + '%';
+        dom.mcRightCiWilson.textContent = 'Wilson: [' + (wilsonR.bajo * 100).toFixed(1) + '%, ' + (wilsonR.alto * 100).toFixed(1) + '%]';
+
+        estado.mc.statsLeft = { boot: bootL, wilson: wilsonL };
+        estado.mc.statsRight = { boot: bootR, wilson: wilsonR };
     }
 
     // =========================================================================
-    // 8. RENDERIZADO DEL ESCENARIO DEL PÉNDULO (#sim-canvas)
+    // 7. MAPA DE CAOS (FTLE ADIMENSIONAL)
     // =========================================================================
-    function dibujarEscenario() {
-        var info = ajustarCanvas(dom.simCanvas);
-        if (!info) return;
-        var ctx = info.ctx;
-        var w = info.width;
-        var h = info.height;
+    function inicializarMapaCaos() {
+        if (window.FTLE_DEFAULT_GRID) {
+            estado.ftle.gridObj = window.FTLE_DEFAULT_GRID;
+            generarBitmapMapaCaos();
+        }
+    }
 
-        ctx.clearRect(0, 0, w, h);
+    function turboColormap(t) {
+        // Colormap perceptual suave estilo Turbo
+        t = Math.max(0.0, Math.min(1.0, t));
+        var r = Math.sin(t * Math.PI - 0.5) * 0.5 + 0.5;
+        var g = Math.sin(t * Math.PI) * 0.9;
+        var b = Math.cos(t * Math.PI * 0.5);
+        if (t < 0.15) {
+            r = t * 2.0; g = t * 1.5; b = 0.2 + t * 4.0;
+        } else if (t > 0.8) {
+            r = 0.9 + (t - 0.8) * 0.5; g = 0.3 * (1.0 - t); b = 0.1 * (1.0 - t);
+        }
+        return [
+            Math.floor(Math.max(0, Math.min(255, r * 255))),
+            Math.floor(Math.max(0, Math.min(255, g * 255))),
+            Math.floor(Math.max(0, Math.min(255, b * 255)))
+        ];
+    }
 
-        // Centro del pivote y escala física
-        var cx = w * 0.5;
-        var cy = h * 0.42;
-        var lTotal = estado.params.l1 + estado.params.l2;
-        var maxRadioPx = Math.min(w, h) * 0.40;
-        var escala = maxRadioPx / lTotal;
+    function generarBitmapMapaCaos() {
+        if (!estado.ftle.gridObj) return;
+        var g = estado.ftle.gridObj;
+        var res = g.res;
+        var data = g.grid;
 
-        var l1Px = estado.params.l1 * escala;
-        var l2Px = estado.params.l2 * escala;
+        var offCanvas = document.createElement('canvas');
+        offCanvas.width = res;
+        offCanvas.height = res;
+        var ctx = offCanvas.getContext('2d');
+        var imgData = ctx.createImageData(res, res);
 
-        var th1 = estado.x[0];
-        var th2 = estado.x[1];
+        // Encontrar max para normalizar (saturar en 3.5 para contraste óptimo)
+        var maxVal = 3.5;
 
-        var x1 = cx + l1Px * Math.sin(th1);
-        var y1 = cy + l1Px * Math.cos(th1);
-        var x2 = x1 + l2Px * Math.sin(th2);
-        var y2 = y1 + l2Px * Math.cos(th2);
+        for (var r = 0; r < res; r++) {
+            for (var c = 0; c < res; c++) {
+                // El grid está en orden row (theta1 de -pi a pi) y col (theta2 de -pi a pi)
+                // Para que el eje Y apunte hacia arriba (theta2 en Y), invertimos r
+                var idxData = r * res + c;
+                var val = data[idxData];
+                var t = Math.min(1.0, val / maxVal);
+                var rgb = turboColormap(t);
 
-        // 1. Estela térmica de la masa 2
-        if (estado.mostrarEstela && estado.estelaM2.length > 1) {
+                // En canvas Y=0 es arriba, así que Y=(res - 1 - r) o r directo
+                var pixelIdx = ((res - 1 - r) * res + c) * 4;
+                imgData.data[pixelIdx + 0] = rgb[0];
+                imgData.data[pixelIdx + 1] = rgb[1];
+                imgData.data[pixelIdx + 2] = rgb[2];
+                imgData.data[pixelIdx + 3] = 255;
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        estado.ftle.offCanvas = offCanvas;
+        redibujarMapaCaos();
+    }
+
+    function redibujarMapaCaos() {
+        var canvas = dom.canvasMapaCaos;
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        var w = Math.floor(rect.width * dpr);
+        var h = Math.floor(rect.height * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+        }
+
+        var ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        var cw = rect.width;
+        var ch = rect.height;
+
+        // Limpiar el lienzo SIEMPRE
+        ctx.fillStyle = color('bg');
+        ctx.fillRect(0, 0, cw, ch);
+
+        // Márgenes para ejes y colorbar
+        var padLeft = 46;
+        var padBottom = 38;
+        var padTop = 16;
+        var padRight = 50;
+        var plotW = cw - padLeft - padRight;
+        var plotH = ch - padTop - padBottom;
+
+        if (plotW <= 10 || plotH <= 10) {
+            ctx.restore();
+            return;
+        }
+
+        // 1. Dibujar el mapa si está listo
+        if (estado.ftle.offCanvas) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(estado.ftle.offCanvas, padLeft, padTop, plotW, plotH);
+        } else {
+            ctx.fillStyle = color('panelSub');
+            ctx.fillRect(padLeft, padTop, plotW, plotH);
+            ctx.fillStyle = color('textMuted');
+            ctx.font = '13px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Calculando mapa FTLE...', padLeft + plotW / 2, padTop + plotH / 2);
+        }
+
+        // 2. Dibujar curvas de contorno analíticas (Ec_m2 y Ec_m1)
+        dibujarContornosEnergia(ctx, padLeft, padTop, plotW, plotH);
+
+        // 3. Ejes y etiquetas (-π a π)
+        ctx.strokeStyle = color('border');
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(padLeft, padTop, plotW, plotH);
+
+        ctx.fillStyle = color('textMuted');
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+
+        var ticks = [
+            { val: -Math.PI, txt: '-π' },
+            { val: -Math.PI / 2, txt: '-π/2' },
+            { val: 0, txt: '0' },
+            { val: Math.PI / 2, txt: 'π/2' },
+            { val: Math.PI, txt: 'π' }
+        ];
+
+        // Eje X: θ₁
+        for (var i = 0; i < ticks.length; i++) {
+            var tx = padLeft + ((ticks[i].val + Math.PI) / (2 * Math.PI)) * plotW;
+            ctx.beginPath();
+            ctx.moveTo(tx, padTop + plotH);
+            ctx.lineTo(tx, padTop + plotH + 5);
+            ctx.stroke();
+            ctx.fillText(ticks[i].txt, tx, padTop + plotH + 16);
+        }
+        ctx.fillStyle = color('text');
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillText('Ángulo inicial θ₁(0) [rad]', padLeft + plotW / 2, padTop + plotH + 32);
+
+        // Eje Y: θ₂
+        ctx.fillStyle = color('textMuted');
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        for (var j = 0; j < ticks.length; j++) {
+            var ty = padTop + plotH - ((ticks[j].val + Math.PI) / (2 * Math.PI)) * plotH;
+            ctx.beginPath();
+            ctx.moveTo(padLeft, ty);
+            ctx.lineTo(padLeft - 5, ty);
+            ctx.stroke();
+            ctx.fillText(ticks[j].txt, padLeft - 8, ty + 4);
+        }
+        ctx.save();
+        ctx.translate(padLeft - 32, padTop + plotH / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = color('text');
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Ángulo inicial θ₂(0) [rad]', 0, 0);
+        ctx.restore();
+
+        // 4. Colorbar vertical a la derecha
+        var cbX = padLeft + plotW + 12;
+        var cbW = 12;
+        var cbH = plotH;
+        for (var py = 0; py < cbH; py++) {
+            var normVal = 1.0 - (py / cbH);
+            var rgb = turboColormap(normVal);
+            ctx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+            ctx.fillRect(cbX, padTop + py, cbW, 1);
+        }
+        ctx.strokeStyle = color('border');
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cbX, padTop, cbW, cbH);
+
+        ctx.fillStyle = color('textMuted');
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('≥3.5', cbX + cbW + 4, padTop + 8);
+        ctx.fillText('1.7', cbX + cbW + 4, padTop + cbH / 2 + 4);
+        ctx.fillText('0.0', cbX + cbW + 4, padTop + cbH);
+
+        // 5. EXACTAMENTE UNA SOLA CRUZ en la condición inicial actual (x0[0], x0[1])
+        var th1Act = estado.x0[0];
+        var th2Act = estado.x0[1];
+        // Mapear a [-pi, pi]
+        th1Act = Math.atan2(Math.sin(th1Act), Math.cos(th1Act));
+        th2Act = Math.atan2(Math.sin(th2Act), Math.cos(th2Act));
+
+        var crossX = padLeft + ((th1Act + Math.PI) / (2 * Math.PI)) * plotW;
+        var crossY = padTop + plotH - ((th2Act + Math.PI) / (2 * Math.PI)) * plotH;
+
+        if (crossX >= padLeft && crossX <= padLeft + plotW && crossY >= padTop && crossY <= padTop + plotH) {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#000000';
+            ctx.beginPath();
+            ctx.moveTo(crossX - 9, crossY); ctx.lineTo(crossX + 9, crossY);
+            ctx.moveTo(crossX, crossY - 9); ctx.lineTo(crossX, crossY + 9);
+            ctx.stroke();
+
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(crossX - 8, crossY); ctx.lineTo(crossX + 8, crossY);
+            ctx.moveTo(crossX, crossY - 8); ctx.lineTo(crossX, crossY + 8);
+            ctx.stroke();
+
+            // Círculo concéntrico sutil
+            ctx.beginPath();
+            ctx.arc(crossX, crossY, 5, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    function dibujarContornosEnergia(ctx, x0, y0, w, h) {
+        var p = estado.params;
+        var umb = PenduloFisica.umbralesEnergia(p);
+        var ec2 = umb.Ec_m2;
+        var ec1 = umb.Ec_m1;
+
+        // V(th1, th2) = -(m1+m2)g*l1*cos(th1) - m2*g*l2*cos(th2)
+        // V(th1, th2) = Ec => curva analítica
+        // cos(th2) = (Ec + (m1+m2)*g*l1*cos(th1)) / (-m2*g*l2)
+        function dibujarCurvaUmbral(ec, estiloColor, esDashed) {
             ctx.save();
-            if (temaActual === 'dark') {
-                ctx.globalCompositeOperation = 'lighter';
-            }
-            var nPuntos = estado.estelaM2.length;
-            for (var i = 1; i < nPuntos; i++) {
-                var pA = estado.estelaM2[i - 1];
-                var pB = estado.estelaM2[i];
+            ctx.strokeStyle = estiloColor;
+            ctx.lineWidth = 1.6;
+            if (esDashed) ctx.setLineDash([4, 4]);
 
-                var pxA = cx + pA.x * escala;
-                var pyA = cy - pA.y * escala; // y física hacia arriba
-                var pxB = cx + pB.x * escala;
-                var pyB = cy - pB.y * escala;
+            var denom = -p.m2 * p.g * p.l2;
+            var numBase = ec;
+            var numTh1Factor = (p.m1 + p.m2) * p.g * p.l1;
 
-                var fraccEdad = i / nPuntos;
-                var vNorm = Math.min(1.0, pB.v / 12.0); // Normalizado hasta 12 m/s
-
-                // Interpolación térmica: frío (cian) -> templado (ámbar) -> caliente (magenta)
-                var r, g, b;
-                if (vNorm < 0.5) {
-                    var f = vNorm * 2.0;
-                    r = Math.round(TEMAS[temaActual].traceSlow[0] * (1 - f) + TEMAS[temaActual].traceMid[0] * f);
-                    g = Math.round(TEMAS[temaActual].traceSlow[1] * (1 - f) + TEMAS[temaActual].traceMid[1] * f);
-                    b = Math.round(TEMAS[temaActual].traceSlow[2] * (1 - f) + TEMAS[temaActual].traceMid[2] * f);
-                } else {
-                    var f2 = (vNorm - 0.5) * 2.0;
-                    r = Math.round(TEMAS[temaActual].traceMid[0] * (1 - f2) + TEMAS[temaActual].traceFast[0] * f2);
-                    g = Math.round(TEMAS[temaActual].traceMid[1] * (1 - f2) + TEMAS[temaActual].traceFast[1] * f2);
-                    b = Math.round(TEMAS[temaActual].traceMid[2] * (1 - f2) + TEMAS[temaActual].traceFast[2] * f2);
-                }
-
-                var alpha = fraccEdad * (temaActual === 'dark' ? 0.75 : 0.60);
-                ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-                ctx.lineWidth = 1.2 + 2.0 * fraccEdad;
+            var nSteps = 180;
+            // Rama positiva y negativa de acos
+            for (var sign = -1; sign <= 1; sign += 2) {
                 ctx.beginPath();
-                ctx.moveTo(pxA, pyA);
-                ctx.lineTo(pxB, pyB);
+                var iniciado = false;
+                for (var s = 0; s <= nSteps; s++) {
+                    var th1 = -Math.PI + (s / nSteps) * 2 * Math.PI;
+                    var cosTh2 = (numBase + numTh1Factor * Math.cos(th1)) / denom;
+                    if (cosTh2 >= -1.0 && cosTh2 <= 1.0) {
+                        var th2 = sign * Math.acos(cosTh2);
+                        var px = x0 + ((th1 + Math.PI) / (2 * Math.PI)) * w;
+                        var py = y0 + h - ((th2 + Math.PI) / (2 * Math.PI)) * h;
+                        if (!iniciado) {
+                            ctx.moveTo(px, py);
+                            iniciado = true;
+                        } else {
+                            ctx.lineTo(px, py);
+                        }
+                    } else {
+                        iniciado = false;
+                    }
+                }
                 ctx.stroke();
             }
             ctx.restore();
         }
 
-        // 2. Líneas verticales punteadas de referencia
+        // Contorno Ec_m2 (Cian punteado)
+        dibujarCurvaUmbral(ec2, color('contourM2'), true);
+        // Contorno Ec_m1 (Ámbar punteado)
+        dibujarCurvaUmbral(ec1, color('contourM1'), true);
+    }
+
+    // =========================================================================
+    // 8. RENDERIZADO VISUAL DEL PÉNDULO ("MATES MIKE")
+    // =========================================================================
+    function dibujarEscenarioPendulo() {
+        var canvas = dom.canvasPenduloMain;
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        var w = Math.floor(rect.width * dpr);
+        var h = Math.floor(rect.height * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+        }
+
+        var ctx = canvas.getContext('2d');
         ctx.save();
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = colorTema('textMuted');
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.5;
+        ctx.scale(dpr, dpr);
 
-        // Vertical en pivote
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx, cy + l1Px + 20);
-        ctx.stroke();
+        var cw = rect.width;
+        var ch = rect.height;
 
-        // Vertical en masa 1
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x1, y1 + l2Px + 20);
-        ctx.stroke();
-        ctx.restore();
+        // Fondo
+        ctx.fillStyle = color('panel');
+        ctx.fillRect(0, 0, cw, ch);
 
-        // 3. Cuñas de ángulo sombreadas (~45 px de radio)
-        var radioCuña = Math.min(48, Math.min(l1Px, l2Px) * 0.7);
+        var origenX = cw * 0.5;
+        var origenY = ch * 0.38;
+        var escalaLongitud = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
-        // Cuña θ1
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        // Ángulo de la vertical abajo es +PI/2
-        var angVert = Math.PI * 0.5;
-        var angVarilla1 = angVert + th1;
-        ctx.arc(cx, cy, radioCuña, angVert, angVarilla1, th1 < 0);
-        ctx.closePath();
-        ctx.fillStyle = temaActual === 'dark' ? 'rgba(76, 201, 240, 0.22)' : 'rgba(2, 132, 199, 0.22)';
-        ctx.fill();
-        ctx.strokeStyle = colorTema('th1');
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        var xCart = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
+        var p1x = origenX + xCart.x1 * escalaLongitud;
+        var p1y = origenY + xCart.y1 * escalaLongitud;
+        var p2x = origenX + xCart.x2 * escalaLongitud;
+        var p2y = origenY + xCart.y2 * escalaLongitud;
 
-        // Cuña θ2
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        var angVarilla2 = angVert + th2;
-        ctx.arc(x1, y1, radioCuña, angVert, angVarilla2, th2 < 0);
-        ctx.closePath();
-        ctx.fillStyle = temaActual === 'dark' ? 'rgba(247, 37, 133, 0.22)' : 'rgba(217, 70, 239, 0.22)';
-        ctx.fill();
-        ctx.strokeStyle = colorTema('th2');
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.restore();
+        // 1. Estela térmica de la masa 2
+        if (estado.mostrarEstela && estado.estelaM2.length > 1) {
+            ctx.save();
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            var trailLen = estado.estelaM2.length;
+            for (var k = 1; k < trailLen; k++) {
+                var ptPrev = estado.estelaM2[k - 1];
+                var ptCurr = estado.estelaM2[k];
+                var alpha = (k / trailLen) * 0.75;
 
-        // 4. Modo Lineal: Péndulo Fantasma
-        if (estado.modo === 'lineal' && estado.xLineal) {
-            var th1L = estado.xLineal[0];
-            var th2L = estado.xLineal[1];
-            var x1L = cx + l1Px * Math.sin(th1L);
-            var y1L = cy + l1Px * Math.cos(th1L);
-            var x2L = x1L + l2Px * Math.sin(th2L);
-            var y2L = y1L + l2Px * Math.cos(th2L);
+                // Color según velocidad
+                var speedRatio = Math.min(1.0, Math.sqrt(ptCurr.v2Sq) / 10.0);
+                var rgb;
+                if (speedRatio < 0.5) {
+                    rgb = color('traceSlow');
+                } else if (speedRatio < 0.8) {
+                    rgb = color('traceMid');
+                } else {
+                    rgb = color('traceFast');
+                }
+
+                ctx.strokeStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha + ')';
+                ctx.beginPath();
+                ctx.moveTo(origenX + ptPrev.x * escalaLongitud, origenY + ptPrev.y * escalaLongitud);
+                ctx.lineTo(origenX + ptCurr.x * escalaLongitud, origenY + ptCurr.y * escalaLongitud);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // 2. Modelo Lineal Fantasma (si está activo el checkbox)
+        if (estado.modoLinealActivo) {
+            var xCartLin = PenduloFisica.posicionesCartesianas(estado.xLineal, estado.params);
+            var lin1x = origenX + xCartLin.x1 * escalaLongitud;
+            var lin1y = origenY + xCartLin.y1 * escalaLongitud;
+            var lin2x = origenX + xCartLin.x2 * escalaLongitud;
+            var lin2y = origenY + xCartLin.y2 * escalaLongitud;
 
             ctx.save();
             ctx.setLineDash([5, 5]);
-            ctx.strokeStyle = colorTema('textMuted');
+            ctx.strokeStyle = color('rodGhost');
             ctx.lineWidth = 2;
-            ctx.globalAlpha = 0.55;
             ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(x1L, y1L);
-            ctx.lineTo(x2L, y2L);
+            ctx.moveTo(origenX, origenY);
+            ctx.lineTo(lin1x, lin1y);
+            ctx.lineTo(lin2x, lin2y);
             ctx.stroke();
 
-            ctx.fillStyle = colorTema('textMuted');
+            // Bob fantasma 1
             ctx.beginPath();
-            ctx.arc(x1L, y1L, 6, 0, 2 * Math.PI);
-            ctx.arc(x2L, y2L, 6, 0, 2 * Math.PI);
+            ctx.arc(lin1x, lin1y, 9, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(76, 201, 240, 0.3)';
+            ctx.fill();
+
+            // Bob fantasma 2
+            ctx.beginPath();
+            ctx.arc(lin2x, lin2y, 9, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(247, 37, 133, 0.3)';
             ctx.fill();
             ctx.restore();
+        }
 
-            // Advertencia de rango lineal (|θ| > 0.3 rad)
+        // 3. Cuñas sombreadas de ángulo (radio 45px desde vertical punteada)
+        dibujarCunaAngulo(ctx, origenX, origenY, estado.x[0], 45, color('th1'));
+        dibujarCunaAngulo(ctx, p1x, p1y, estado.x[1], 45, color('th2'));
+
+        // 4. Varillas rígidas de masa despreciable
+        ctx.strokeStyle = color('rod');
+        ctx.lineWidth = 4.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(origenX, origenY);
+        ctx.lineTo(p1x, p1y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
+        ctx.stroke();
+
+        // Pivote fijo
+        ctx.fillStyle = color('text');
+        ctx.beginPath();
+        ctx.arc(origenX, origenY, 5, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // 5. Masas puntuales (m1 en Cian, m2 en Magenta) con etiquetas laterales
+        // Masa 1
+        var radioM1 = 13 + Math.min(6, estado.params.m1 * 2);
+        ctx.fillStyle = color('th1');
+        ctx.beginPath();
+        ctx.arc(p1x, p1y, radioM1, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = color('bg');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Etiqueta m1 al lado derecho
+        ctx.fillStyle = color('text');
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('m₁ (' + estado.params.m1.toFixed(1) + ' kg)', p1x + radioM1 + 6, p1y + 4);
+
+        // Masa 2
+        var radioM2 = 13 + Math.min(6, estado.params.m2 * 2);
+        ctx.fillStyle = color('th2');
+        ctx.beginPath();
+        ctx.arc(p2x, p2y, radioM2, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = color('bg');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Etiqueta m2 al lado derecho
+        ctx.fillStyle = color('text');
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('m₂ (' + estado.params.m2.toFixed(1) + ' kg)', p2x + radioM2 + 6, p2y + 4);
+
+        ctx.restore();
+    }
+
+    function dibujarCunaAngulo(ctx, cx, cy, angulo, radio, estiloColor) {
+        ctx.save();
+        // Línea vertical punteada de referencia (hacia abajo)
+        ctx.strokeStyle = color('textMuted');
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy + radio + 10);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Cuña sombreada
+        var anguloInicio = Math.PI * 0.5; // Vertical hacia abajo
+        var anguloFin = anguloInicio + angulo;
+        var sentidoAntihorario = angulo < 0;
+
+        ctx.fillStyle = estiloColor.replace(')', ', 0.22)').replace('rgb', 'rgba');
+        ctx.strokeStyle = estiloColor;
+        ctx.lineWidth = 1.8;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radio, anguloInicio, anguloFin, sentidoAntihorario);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // =========================================================================
+    // 9. RENDERIZADO DE GRÁFICAS DE LA COLUMNA DERECHA EN PÉNDULO
+    // =========================================================================
+    function dibujarGraficaDerechaPendulo() {
+        var canvas = dom.canvasPenduloChart;
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        var w = Math.floor(rect.width * dpr);
+        var h = Math.floor(rect.height * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+        }
+
+        var ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        var cw = rect.width;
+        var ch = rect.height;
+
+        ctx.fillStyle = color('panel');
+        ctx.fillRect(0, 0, cw, ch);
+
+        var padLeft = 46;
+        var padRight = 16;
+        var padTop = 16;
+        var padBottom = 30;
+        var plotW = cw - padLeft - padRight;
+        var plotH = ch - padTop - padBottom;
+
+        if (plotW <= 10 || plotH <= 10) {
+            ctx.restore();
+            return;
+        }
+
+        var historial = estado.historialTiempo;
+        if (historial.length < 2) {
+            ctx.restore();
+            return;
+        }
+
+        if (!estado.vistaEspacioFase) {
+            // MODO 1: ÁNGULOS EN EL TIEMPO θ₁(t) y θ₂(t)
+            var tMax = estado.t;
+            var tMin = Math.max(0.0, tMax - estado.ventanaS);
+            if (tMax - tMin < 1.0) tMax = tMin + 1.0;
+
+            var yMin = -Math.PI;
+            var yMax = Math.PI;
+
+            // Cuadrícula y ejes
+            ctx.strokeStyle = color('grid');
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            var yZero = padTop + plotH * 0.5;
+            ctx.moveTo(padLeft, yZero);
+            ctx.lineTo(padLeft + plotW, yZero);
+            ctx.stroke();
+
+            ctx.fillStyle = color('textMuted');
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('π', padLeft - 6, padTop + 10);
+            ctx.fillText('0', padLeft - 6, yZero + 4);
+            ctx.fillText('-π', padLeft - 6, padTop + plotH);
+
+            ctx.textAlign = 'center';
+            ctx.fillText((tMin).toFixed(0) + 's', padLeft, padTop + plotH + 18);
+            ctx.fillText((tMax).toFixed(0) + 's', padLeft + plotW, padTop + plotH + 18);
+
+            // Curvas θ₁(t) y θ₂(t)
+            dibujarSerieTemporal(ctx, historial, 'th1', tMin, tMax, yMin, yMax, padLeft, padTop, plotW, plotH, color('th1'), false);
+            dibujarSerieTemporal(ctx, historial, 'th2', tMin, tMax, yMin, yMax, padLeft, padTop, plotW, plotH, color('th2'), false);
+
+            // Si modo lineal está activo, dibujar curvas punteadas
+            if (estado.modoLinealActivo) {
+                dibujarSerieTemporal(ctx, historial, 'th1Lin', tMin, tMax, yMin, yMax, padLeft, padTop, plotW, plotH, color('th1'), true);
+                dibujarSerieTemporal(ctx, historial, 'th2Lin', tMin, tMax, yMin, yMax, padLeft, padTop, plotW, plotH, color('th2'), true);
+            }
+        } else {
+            // MODO 2: ESPACIO FASE (θ, ω) envolviendo en (-π, π] y cortando saltos
+            ctx.strokeStyle = color('grid');
+            ctx.lineWidth = 1;
+            ctx.strokeRect(padLeft, padTop, plotW, plotH);
+
+            var cx = padLeft + plotW * 0.5;
+            var cy = padTop + plotH * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(padLeft, cy); ctx.lineTo(padLeft + plotW, cy);
+            ctx.moveTo(cx, padTop); ctx.lineTo(cx, padTop + plotH);
+            ctx.stroke();
+
+            ctx.fillStyle = color('textMuted');
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('θ ∈ (-π, π]', cx, padTop + plotH + 18);
+
+            dibujarTrayectoriaFaseCorte(ctx, historial, 'th1', 'w1', padLeft, padTop, plotW, plotH, color('th1'));
+            dibujarTrayectoriaFaseCorte(ctx, historial, 'th2', 'w2', padLeft, padTop, plotW, plotH, color('th2'));
+        }
+
+        ctx.restore();
+    }
+
+    function dibujarSerieTemporal(ctx, data, campo, tMin, tMax, yMin, yMax, x0, y0, w, h, estiloColor, esDashed) {
+        ctx.save();
+        ctx.strokeStyle = estiloColor;
+        ctx.lineWidth = esDashed ? 1.5 : 2.2;
+        if (esDashed) ctx.setLineDash([4, 4]);
+
+        ctx.beginPath();
+        var iniciado = false;
+        var prevVal = 0;
+
+        for (var i = 0; i < data.length; i++) {
+            var pt = data[i];
+            if (pt.t < tMin) continue;
+
+            // Envolver a [-pi, pi]
+            var val = pt[campo];
+            var valWrapped = Math.atan2(Math.sin(val), Math.cos(val));
+
+            var px = x0 + ((pt.t - tMin) / (tMax - tMin)) * w;
+            var py = y0 + h - ((valWrapped - yMin) / (yMax - yMin)) * h;
+
+            // Cortar saltos cuando cruza frontera ±pi
+            if (!iniciado) {
+                ctx.moveTo(px, py);
+                iniciado = true;
+            } else {
+                if (Math.abs(valWrapped - prevVal) > Math.PI) {
+                    ctx.moveTo(px, py);
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            prevVal = valWrapped;
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function dibujarTrayectoriaFaseCorte(ctx, data, campoTh, campoW, x0, y0, w, h, estiloColor) {
+        ctx.save();
+        ctx.strokeStyle = estiloColor;
+        ctx.lineWidth = 1.8;
+
+        var wMax = 12.0; // Rango típico de velocidad angular [-12, 12]
+
+        ctx.beginPath();
+        var iniciado = false;
+        var prevTh = 0;
+
+        for (var i = 0; i < data.length; i++) {
+            var pt = data[i];
+            var thWrapped = Math.atan2(Math.sin(pt[campoTh]), Math.cos(pt[campoTh]));
+            var vel = Math.max(-wMax, Math.min(wMax, pt[campoW]));
+
+            var px = x0 + ((thWrapped + Math.PI) / (2 * Math.PI)) * w;
+            var py = y0 + h * 0.5 - (vel / (2 * wMax)) * h;
+
+            if (!iniciado) {
+                ctx.moveTo(px, py);
+                iniciado = true;
+            } else {
+                if (Math.abs(thWrapped - prevTh) > Math.PI) {
+                    ctx.moveTo(px, py);
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            prevTh = thWrapped;
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // =========================================================================
+    // 10. RENDERIZADO DE LA PESTAÑA GEMELOS
+    // =========================================================================
+    function dibujarPestañaGemelos() {
+        // 1. Escenario de péndulos gemelos superpuestos
+        var canvasStage = dom.canvasGemelosStage;
+        if (canvasStage) {
+            var rectS = canvasStage.getBoundingClientRect();
+            var dprS = window.devicePixelRatio || 1;
+            canvasStage.width = Math.floor(rectS.width * dprS);
+            canvasStage.height = Math.floor(rectS.height * dprS);
+            var ctxS = canvasStage.getContext('2d');
+            ctxS.save();
+            ctxS.scale(dprS, dprS);
+
+            var cw = rectS.width;
+            var ch = rectS.height;
+            ctxS.fillStyle = color('panel');
+            ctxS.fillRect(0, 0, cw, ch);
+
+            var ox = cw * 0.5;
+            var oy = ch * 0.4;
+            var esc = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
+
+            // Péndulo Base (sólido)
+            var cBase = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
+            var b1x = ox + cBase.x1 * esc, b1y = oy + cBase.y1 * esc;
+            var b2x = ox + cBase.x2 * esc, b2y = oy + cBase.y2 * esc;
+
+            ctxS.strokeStyle = color('rod');
+            ctxS.lineWidth = 4;
+            ctxS.lineCap = 'round';
+            ctxS.beginPath();
+            ctxS.moveTo(ox, oy); ctxS.lineTo(b1x, b1y); ctxS.lineTo(b2x, b2y);
+            ctxS.stroke();
+
+            ctxS.fillStyle = color('th1');
+            ctxS.beginPath(); ctxS.arc(b1x, b1y, 12, 0, 2 * Math.PI); ctxS.fill();
+            ctxS.fillStyle = color('th2');
+            ctxS.beginPath(); ctxS.arc(b2x, b2y, 12, 0, 2 * Math.PI); ctxS.fill();
+
+            // Péndulo Gemelo (translúcido con borde resaltado)
+            if (estado.xGemelo) {
+                var cGem = PenduloFisica.posicionesCartesianas(estado.xGemelo, estado.params);
+                var g1x = ox + cGem.x1 * esc, g1y = oy + cGem.y1 * esc;
+                var g2x = ox + cGem.x2 * esc, g2y = oy + cGem.y2 * esc;
+
+                ctxS.strokeStyle = 'rgba(255, 183, 3, 0.75)';
+                ctxS.lineWidth = 2.5;
+                ctxS.setLineDash([4, 4]);
+                ctxS.beginPath();
+                ctxS.moveTo(ox, oy); ctxS.lineTo(g1x, g1y); ctxS.lineTo(g2x, g2y);
+                ctxS.stroke();
+                ctxS.setLineDash([]);
+
+                ctxS.fillStyle = 'rgba(255, 183, 3, 0.85)';
+                ctxS.beginPath(); ctxS.arc(g2x, g2y, 11, 0, 2 * Math.PI); ctxS.fill();
+                ctxS.strokeStyle = '#ffffff';
+                ctxS.lineWidth = 1.5;
+                ctxS.stroke();
+            }
+
+            ctxS.restore();
+        }
+
+        // 2. Gráfica de Separación log10(d) vs t
+        var canvasSep = dom.canvasGemelosSeparation;
+        if (canvasSep) {
+            var rectC = canvasSep.getBoundingClientRect();
+            var dprC = window.devicePixelRatio || 1;
+            canvasSep.width = Math.floor(rectC.width * dprC);
+            canvasSep.height = Math.floor(rectC.height * dprC);
+            var ctxC = canvasSep.getContext('2d');
+            ctxC.save();
+            ctxC.scale(dprC, dprC);
+
+            var pw = rectC.width;
+            var ph = rectC.height;
+            ctxC.fillStyle = color('panel');
+            ctxC.fillRect(0, 0, pw, ph);
+
+            var padL = 46, padR = 16, padT = 16, padB = 30;
+            var gw = pw - padL - padR;
+            var gh = ph - padT - padB;
+
+            if (gw > 10 && gh > 10) {
+                var h = estado.historialGemelos;
+                var logMin = -4.0; // d = 10^-4
+                var logMax = 1.0;  // d = 10^1 = 10
+                var tMax = Math.max(10.0, estado.t);
+
+                // Cuadrícula y ejes
+                ctxC.strokeStyle = color('grid');
+                ctxC.lineWidth = 1;
+                ctxC.strokeRect(padL, padT, gw, gh);
+
+                ctxC.fillStyle = color('textMuted');
+                ctxC.font = '11px system-ui, sans-serif';
+                ctxC.textAlign = 'right';
+                ctxC.fillText('10⁰', padL - 6, padT + gh * 0.2);
+                ctxC.fillText('10⁻²', padL - 6, padT + gh * 0.6);
+                ctxC.fillText('10⁻⁴', padL - 6, padT + gh);
+
+                ctxC.textAlign = 'center';
+                ctxC.fillText('0s', padL, padT + gh + 18);
+                ctxC.fillText(tMax.toFixed(0) + 's', padL + gw, padT + gh + 18);
+
+                // Curva log10(d)
+                if (h.length > 1) {
+                    ctxC.strokeStyle = color('energy');
+                    ctxC.lineWidth = 2.2;
+                    ctxC.beginPath();
+                    for (var k = 0; k < h.length; k++) {
+                        var px = padL + (h[k].t / tMax) * gw;
+                        var py = padT + gh - ((h[k].logD - logMin) / (logMax - logMin)) * gh;
+                        py = Math.max(padT, Math.min(padT + gh, py));
+                        if (k === 0) ctxC.moveTo(px, py);
+                        else ctxC.lineTo(px, py);
+                    }
+                    ctxC.stroke();
+                }
+            }
+            ctxC.restore();
+        }
+    }
+
+    // =========================================================================
+    // 11. RENDERIZADO DE LA PESTAÑA MONTE CARLO
+    // =========================================================================
+    function dibujarPestañaMonteCarlo() {
+        // Panel Izquierdo: Stage + Histograma
+        dibujarMiniEnsemble(dom.canvasMcStageLeft, estado.mc.left.pendulos, color('th1'));
+        dibujarHistogramaFlips(dom.canvasMcHistLeft, estado.mc.left.flips, color('th1'));
+
+        // Panel Derecho: Stage + Histograma
+        dibujarMiniEnsemble(dom.canvasMcStageRight, estado.mc.right.pendulos, color('th2'));
+        dibujarHistogramaFlips(dom.canvasMcHistRight, estado.mc.right.flips, color('th2'));
+    }
+
+    function dibujarMiniEnsemble(canvas, pendulos, estiloColor) {
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(rect.width * dpr);
+        canvas.height = Math.floor(rect.height * dpr);
+        var ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        var cw = rect.width;
+        var ch = rect.height;
+        ctx.fillStyle = color('panelSub');
+        ctx.fillRect(0, 0, cw, ch);
+
+        var ox = cw * 0.5;
+        var oy = ch * 0.42;
+        var esc = Math.min(cw, ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
+
+        var n = pendulos.length;
+        // Dibujar varillas muy tenues
+        ctx.strokeStyle = 'rgba(150, 160, 180, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (var i = 0; i < n; i += 2) {
+            var c = PenduloFisica.posicionesCartesianas(pendulos[i], estado.params);
+            ctx.moveTo(ox, oy);
+            ctx.lineTo(ox + c.x1 * esc, oy + c.y1 * esc);
+            ctx.lineTo(ox + c.x2 * esc, oy + c.y2 * esc);
+        }
+        ctx.stroke();
+
+        // Dibujar puntos brillantes de la masa 2
+        ctx.fillStyle = estiloColor;
+        for (var j = 0; j < n; j++) {
+            var c2 = PenduloFisica.posicionesCartesianas(pendulos[j], estado.params);
+            var px = ox + c2.x2 * esc;
+            var py = oy + c2.y2 * esc;
+            ctx.beginPath();
+            ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+
+    function dibujarHistogramaFlips(canvas, flips, estiloColor) {
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(rect.width * dpr);
+        canvas.height = Math.floor(rect.height * dpr);
+        var ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        var cw = rect.width;
+        var ch = rect.height;
+        ctx.fillStyle = color('panelSub');
+        ctx.fillRect(0, 0, cw, ch);
+
+        var padL = 40, padR = 14, padT = 16, padB = 26;
+        var gw = cw - padL - padR;
+        var gh = ch - padT - padB;
+
+        if (gw <= 10 || gh <= 10) {
+            ctx.restore();
+            return;
+        }
+
+        // Determinar max flips entre ambos paneles para escala compartida
+        var maxFlipObs = 0;
+        var n = flips.length;
+        for (var i = 0; i < n; i++) {
+            if (flips[i] > maxFlipObs) maxFlipObs = flips[i];
+        }
+        var maxBins = Math.max(6, maxFlipObs + 1);
+
+        // Contar frecuencias
+        var cuentas = new Array(maxBins).fill(0);
+        for (var j = 0; j < n; j++) {
+            var f = flips[j];
+            if (f < maxBins) cuentas[f]++;
+        }
+
+        var maxCuenta = Math.max(1, Math.max.apply(null, cuentas));
+
+        // Ejes
+        ctx.strokeStyle = color('border');
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padL, padT);
+        ctx.lineTo(padL, padT + gh);
+        ctx.lineTo(padL + gw, padT + gh);
+        ctx.stroke();
+
+        // Etiqueta vertical "Frecuencia" sin encimarse con el título
+        ctx.save();
+        ctx.translate(14, padT + gh * 0.5);
+        ctx.rotate(-Math.PI * 0.5);
+        ctx.fillStyle = color('textMuted');
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Frecuencia', 0, 0);
+        ctx.restore();
+
+        // Barras
+        var barW = gw / maxBins;
+        ctx.fillStyle = estiloColor;
+        ctx.strokeStyle = color('bg');
+        ctx.lineWidth = 1;
+
+        for (var b = 0; b < maxBins; b++) {
+            var bH = (cuentas[b] / maxCuenta) * (gh - 10);
+            var bx = padL + b * barW;
+            var by = padT + gh - bH;
+
+            ctx.fillRect(bx + 2, by, barW - 4, bH);
+            ctx.strokeRect(bx + 2, by, barW - 4, bH);
+
+            // Etiquetas eje X
+            if (maxBins <= 10 || b % 2 === 0) {
+                ctx.fillStyle = color('textMuted');
+                ctx.font = '10px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(b.toString(), bx + barW * 0.5, padT + gh + 14);
+                ctx.fillStyle = estiloColor;
+            }
+        }
+
+        ctx.restore();
+    }
+
+    // =========================================================================
+    // 12. ACTUALIZACIÓN DEL TERMÓMETRO DE ENERGÍA Y HUD
+    // =========================================================================
+    function actualizarTermometroEnergia() {
+        var p = estado.params;
+        var umb = PenduloFisica.umbralesEnergia(p);
+        var ec2 = umb.Ec_m2;
+        var ec1 = umb.Ec_m1;
+        var ecAmbas = umb.Ec_ambas;
+
+        // Actualizar textos de los marcadores con sus valores en Joules
+        dom.markLblM2.textContent = 'm₂ puede dar la vuelta (' + ec2.toFixed(1) + ' J)';
+        dom.markLblM1.textContent = 'm₁ puede dar la vuelta (' + ec1.toFixed(1) + ' J)';
+        dom.markLblAmbas.textContent = 'ambas (' + ecAmbas.toFixed(1) + ' J)';
+
+        // Posiciones relativas en la barra (escala de 0 a Ec_ambas * 1.15)
+        var maxEscala = ecAmbas * 1.15;
+        var posM2 = Math.min(100, Math.max(0, (ec2 / maxEscala) * 100));
+        var posM1 = Math.min(100, Math.max(0, (ec1 / maxEscala) * 100));
+        var posAmbas = Math.min(100, Math.max(0, (ecAmbas / maxEscala) * 100));
+
+        dom.markM2.style.left = posM2 + '%';
+        dom.markM1.style.left = posM1 + '%';
+        dom.markAmbas.style.left = posAmbas + '%';
+
+        // Llenado actual
+        var eActual = PenduloFisica.energiaTotal(estado.x, estado.params);
+        var posActual = Math.min(100, Math.max(0, (eActual / maxEscala) * 100));
+        dom.thermometerFill.style.width = posActual + '%';
+
+        dom.readoutTotalE.textContent = eActual.toFixed(2);
+        dom.readoutFlips.textContent = estado.vueltasM2.toString();
+    }
+
+    function actualizarIndicadoresHUD() {
+        // Números grandes de ángulos
+        var th1 = estado.x[0];
+        var th2 = estado.x[1];
+        var th1Deg = th1 * (180.0 / Math.PI);
+        var th2Deg = th2 * (180.0 / Math.PI);
+
+        dom.bigAngleTh1.textContent = th1.toFixed(2) + ' rad (' + th1Deg.toFixed(0) + '°)';
+        dom.bigAngleTh2.textContent = th2.toFixed(2) + ' rad (' + th2Deg.toFixed(0) + '°)';
+        dom.bigTime.textContent = estado.t.toFixed(2) + ' s';
+
+        // Advertencia lineal en texto plano (NO emojis)
+        if (estado.modoLinealActivo) {
             if (Math.abs(th1) > 0.3 || Math.abs(th2) > 0.3) {
                 dom.linearWarning.style.display = 'block';
             } else {
@@ -681,1207 +1648,172 @@
             dom.linearWarning.style.display = 'none';
         }
 
-        // 5. Modo Gemelo: Péndulo Gemelo Faint
-        if (estado.modo === 'gemelo' && estado.xGemelo) {
-            var th1G = estado.xGemelo[0];
-            var th2G = estado.xGemelo[1];
-            var x1G = cx + l1Px * Math.sin(th1G);
-            var y1G = cy + l1Px * Math.cos(th1G);
-            var x2G = x1G + l2Px * Math.sin(th2G);
-            var y2G = y1G + l2Px * Math.cos(th2G);
-
-            ctx.save();
-            ctx.strokeStyle = colorTema('energy');
-            ctx.lineWidth = 1.5;
-            ctx.globalAlpha = 0.6;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(x1G, y1G);
-            ctx.lineTo(x2G, y2G);
-            ctx.stroke();
-
-            ctx.fillStyle = colorTema('energy');
-            ctx.beginPath();
-            ctx.arc(x2G, y2G, 6, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.restore();
-        }
-
-        // 6. Modo Nube: Enjambre de masas 2
-        if (estado.modo === 'nube' && estado.nubePendulos.length > 0) {
-            ctx.save();
-            if (temaActual === 'dark') ctx.globalCompositeOperation = 'lighter';
-            for (var k = 0; k < estado.nubePendulos.length; k++) {
-                var p = estado.nubePendulos[k];
-                var px1 = cx + l1Px * Math.sin(p.x[0]);
-                var py1 = cy + l1Px * Math.cos(p.x[0]);
-                var px2 = px1 + l2Px * Math.sin(p.x[1]);
-                var py2 = py1 + l2Px * Math.cos(p.x[1]);
-
-                var colDot = p.flips > 0 ? colorTema('th2') : colorTema('th1');
-                ctx.fillStyle = colDot;
-                ctx.globalAlpha = 0.45;
-                ctx.beginPath();
-                ctx.arc(px2, py2, 3, 0, 2 * Math.PI);
-                ctx.fill();
-            }
-            ctx.restore();
-        }
-
-        // 7. Varillas Físicas Principales
-        ctx.save();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Varilla 1
-        ctx.strokeStyle = colorTema('th1');
-        ctx.lineWidth = 4.5;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(x1, y1);
-        ctx.stroke();
-
-        // Varilla 2
-        ctx.strokeStyle = colorTema('th2');
-        ctx.lineWidth = 4.0;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-
-        // Pivote central
-        ctx.fillStyle = colorTema('text');
-        ctx.beginPath();
-        ctx.arc(cx, cy, 5.5, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.restore();
-
-        // 8. Masas con radio cbrt(m), halo y gradiente
-        var rBase = 15;
-        var r1 = Math.max(8, rBase * Math.cbrt(estado.params.m1));
-        var r2 = Math.max(8, rBase * Math.cbrt(estado.params.m2));
-
-        // Dibujar Masa 1
-        dibujarMasaConHalo(ctx, x1, y1, r1, colorTema('th1'), 'm₁: ' + estado.params.m1.toFixed(1) + ' kg');
-
-        // Dibujar Masa 2
-        dibujarMasaConHalo(ctx, x2, y2, r2, colorTema('th2'), 'm₂: ' + estado.params.m2.toFixed(1) + ' kg');
+        // Error relativo de energía
+        dom.valErrorDeltaE.textContent = estado.deltaERel.toExponential(2);
     }
 
-    function dibujarMasaConHalo(ctx, x, y, radio, colorHex, etiqueta) {
-        ctx.save();
+    function actualizarParametrosLabels() {
+        dom.lblTh1.textContent = parseFloat(dom.sliderTh1.value).toFixed(0) + '°';
+        dom.lblTh2.textContent = parseFloat(dom.sliderTh2.value).toFixed(0) + '°';
+        dom.lblW1.textContent = parseFloat(dom.sliderW1.value).toFixed(1) + ' rad/s';
+        dom.lblW2.textContent = parseFloat(dom.sliderW2.value).toFixed(1) + ' rad/s';
 
-        // Halo difuso suave
-        var gradHalo = ctx.createRadialGradient(x, y, radio * 0.5, x, y, radio * 1.8);
-        gradHalo.addColorStop(0, colorHex);
-        gradHalo.addColorStop(1, 'transparent');
-        ctx.fillStyle = gradHalo;
-        ctx.globalAlpha = 0.35;
-        ctx.beginPath();
-        ctx.arc(x, y, radio * 1.8, 0, 2 * Math.PI);
-        ctx.fill();
+        dom.lblM1.textContent = parseFloat(dom.sliderM1.value).toFixed(2) + ' kg';
+        dom.lblM2.textContent = parseFloat(dom.sliderM2.value).toFixed(2) + ' kg';
+        dom.lblL1.textContent = parseFloat(dom.sliderL1.value).toFixed(2) + ' m';
+        dom.lblL2.textContent = parseFloat(dom.sliderL2.value).toFixed(2) + ' m';
 
-        // Disco principal con gradiente esférico
-        ctx.globalAlpha = 1.0;
-        var gradBob = ctx.createRadialGradient(x - radio * 0.3, y - radio * 0.3, radio * 0.1, x, y, radio);
-        gradBob.addColorStop(0, '#ffffff');
-        gradBob.addColorStop(0.3, colorHex);
-        gradBob.addColorStop(1, '#000000');
-        ctx.fillStyle = gradBob;
-        ctx.beginPath();
-        ctx.arc(x, y, radio, 0, 2 * Math.PI);
-        ctx.fill();
+        var m1 = parseFloat(dom.sliderM1.value);
+        var m2 = parseFloat(dom.sliderM2.value);
+        var l1 = parseFloat(dom.sliderL1.value);
+        var l2 = parseFloat(dom.sliderL2.value);
+        dom.lblMu.textContent = (m2 / m1).toFixed(2);
+        dom.lblLambda.textContent = (l2 / l1).toFixed(2);
 
-        ctx.strokeStyle = colorHex;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        dom.lblG.textContent = parseFloat(dom.sliderG.value).toFixed(2) + ' m/s²';
+        dom.lblDeltaGemelos.textContent = parseFloat(dom.sliderDeltaGemelos.value).toFixed(4) + ' rad';
 
-        // Etiqueta al lado del disco con alto contraste
-        ctx.font = '600 11px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        var textW = ctx.measureText(etiqueta).width;
-        var textX = x + radio + 8;
-        var textY = y + 4;
-
-        // Pastilla de fondo para legibilidad
-        ctx.fillStyle = temaActual === 'dark' ? 'rgba(18, 24, 38, 0.88)' : 'rgba(255, 255, 255, 0.88)';
-        ctx.fillRect(textX - 4, textY - 11, textW + 8, 15);
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(textX - 4, textY - 11, textW + 8, 15);
-
-        ctx.fillStyle = colorTema('text');
-        ctx.fillText(etiqueta, textX, textY);
-
-        ctx.restore();
+        dom.lblMcN.textContent = dom.sliderMcN.value;
+        dom.lblMcSigma.textContent = parseFloat(dom.sliderMcSigma.value).toFixed(3) + ' rad';
+        dom.lblMcT.textContent = dom.sliderMcT.value + ' s';
     }
 
     // =========================================================================
-    // 9. RENDERIZADO DE LAS 4 GRÁFICAS EN VIVO (REJILLA 2x2)
+    // 13. NAVEGACIÓN Y CAMBIO DE PESTAÑAS
     // =========================================================================
-
-    // Gráfica 1: θ1(t) y θ2(t) en ventana rodante de 20s
-    function dibujarGraficaAngulos() {
-        var info = ajustarCanvas(dom.chartAnglesCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-
-        ctx.clearRect(0, 0, w, h);
-        dibujarMarcoYRejilla(ctx, w, h, 'θ (rad)');
-
-        var hist = estado.historialTiempo;
-        if (hist.length < 2) return;
-
-        var tMax = estado.t;
-        var tMin = Math.max(0, tMax - estado.ventanaHistorialS);
-        var dtSpan = Math.max(0.1, tMax - tMin);
-
-        var escalaY = (h - 24) / (2.0 * Math.PI); // de -pi a +pi
-        var yCentro = h * 0.5;
-
-        // Curva θ1 (Cian)
-        ctx.save();
-        ctx.strokeStyle = colorTema('th1');
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        for (var i = 0; i < hist.length; i++) {
-            var pt = hist[i];
-            var xPx = 36 + ((pt.t - tMin) / dtSpan) * (w - 44);
-            // Envolver a [-pi, pi]
-            var th1Wrap = ((pt.th1 + Math.PI) % (2 * Math.PI)) - Math.PI;
-            var yPx = yCentro - th1Wrap * escalaY;
-            if (i === 0) ctx.moveTo(xPx, yPx);
-            else ctx.lineTo(xPx, yPx);
-        }
-        ctx.stroke();
-
-        // Curva θ2 (Magenta)
-        ctx.strokeStyle = colorTema('th2');
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        for (var j = 0; j < hist.length; j++) {
-            var pt2 = hist[j];
-            var xPx2 = 36 + ((pt2.t - tMin) / dtSpan) * (w - 44);
-            var th2Wrap = ((pt2.th2 + Math.PI) % (2 * Math.PI)) - Math.PI;
-            var yPx2 = yCentro - th2Wrap * escalaY;
-            if (j === 0) ctx.moveTo(xPx2, yPx2);
-            else ctx.lineTo(xPx2, yPx2);
-        }
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    // Gráfica 2: Retratos de Fase (θ, ω) con envoltura y cortes en |Δθ| > pi
-    function dibujarGraficaFase() {
-        var info = ajustarCanvas(dom.chartPhaseCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-
-        ctx.clearRect(0, 0, w, h);
-        dibujarMarcoFase(ctx, w, h);
-
-        var hist = estado.historialTiempo;
-        if (hist.length < 2) return;
-
-        var sub = estado.subfaseRetrato;
-        var cx = 34 + (w - 42) * 0.5;
-        var cy = h * 0.5;
-        var escalaX = (w - 46) * 0.5 / Math.PI; // -pi a +pi
-        var maxOmega = 12.0;
-        var escalaY = (h - 20) * 0.5 / maxOmega;
-
-        // Péndulo 1
-        if (sub === 'both' || sub === 'p1') {
-            ctx.save();
-            ctx.strokeStyle = colorTema('th1');
-            ctx.lineWidth = 1.4;
-            ctx.beginPath();
-            var prevTh1 = null;
-
-            for (var i = 0; i < hist.length; i++) {
-                var pt = hist[i];
-                var thWrap = ((pt.th1 + Math.PI) % (2 * Math.PI)) - Math.PI;
-                var px = cx + thWrap * escalaX;
-                var py = cy - Math.max(-maxOmega, Math.min(maxOmega, pt.w1)) * escalaY;
-
-                if (prevTh1 === null || Math.abs(thWrap - prevTh1) > Math.PI) {
-                    ctx.moveTo(px, py); // CORTE VITAL: Evita raya horizontal
-                } else {
-                    ctx.lineTo(px, py);
-                }
-                prevTh1 = thWrap;
-            }
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        // Péndulo 2
-        if (sub === 'both' || sub === 'p2') {
-            ctx.save();
-            ctx.strokeStyle = colorTema('th2');
-            ctx.lineWidth = 1.4;
-            ctx.beginPath();
-            var prevTh2 = null;
-
-            for (var j = 0; j < hist.length; j++) {
-                var pt2 = hist[j];
-                var th2Wrap = ((pt2.th2 + Math.PI) % (2 * Math.PI)) - Math.PI;
-                var px2 = cx + th2Wrap * escalaX;
-                var py2 = cy - Math.max(-maxOmega, Math.min(maxOmega, pt2.w2)) * escalaY;
-
-                if (prevTh2 === null || Math.abs(th2Wrap - prevTh2) > Math.PI) {
-                    ctx.moveTo(px2, py2); // CORTE VITAL
-                } else {
-                    ctx.lineTo(px2, py2);
-                }
-                prevTh2 = th2Wrap;
-            }
-            ctx.stroke();
-            ctx.restore();
-        }
-    }
-
-    // Gráfica 3: Energía apilada (T menta, V violeta, E ámbar) + Tira Logarítmica
-    function dibujarGraficaEnergia() {
-        var info = ajustarCanvas(dom.chartEnergyCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-
-        ctx.clearRect(0, 0, w, h);
-
-        var hLog = 28;
-        var hEnergia = h - hLog - 6;
-
-        var hist = estado.historialTiempo;
-        var tMax = estado.t;
-        var tMin = Math.max(0, tMax - estado.ventanaHistorialS);
-        var dtSpan = Math.max(0.1, tMax - tMin);
-
-        // Marco área de energía
-        ctx.save();
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(34, 4, w - 42, hEnergia - 6);
-
-        var maxE = Math.max(10.0, estado.e0 * 1.25);
-        var escalaY = (hEnergia - 12) / maxE;
-        var yBase = hEnergia - 2;
-
-        if (hist.length >= 2) {
-            // Área de T (cinética - menta)
-            ctx.beginPath();
-            ctx.moveTo(34, yBase);
-            for (var i = 0; i < hist.length; i++) {
-                var pt = hist[i];
-                var px = 34 + ((pt.t - tMin) / dtSpan) * (w - 42);
-                var pyT = yBase - pt.T * escalaY;
-                ctx.lineTo(px, pyT);
-            }
-            ctx.lineTo(34 + (w - 42), yBase);
-            ctx.closePath();
-            ctx.fillStyle = colorTema('kinetic');
-            ctx.globalAlpha = 0.65;
-            ctx.fill();
-
-            // Área de V apilada encima de T (violeta)
-            ctx.beginPath();
-            ctx.globalAlpha = 0.55;
-            ctx.fillStyle = colorTema('potential');
-            for (var j = 0; j < hist.length; j++) {
-                var pt2 = hist[j];
-                var px2 = 34 + ((pt2.t - tMin) / dtSpan) * (w - 42);
-                var pyT2 = yBase - pt2.T * escalaY;
-                var pyTotal = yBase - (pt2.T + pt2.V) * escalaY;
-                if (j === 0) ctx.moveTo(px2, pyT2);
-                else ctx.lineTo(px2, pyTotal);
-            }
-            for (var k = hist.length - 1; k >= 0; k--) {
-                var ptK = hist[k];
-                var pxK = 34 + ((ptK.t - tMin) / dtSpan) * (w - 42);
-                var pyTK = yBase - ptK.T * escalaY;
-                ctx.lineTo(pxK, pyTK);
-            }
-            ctx.closePath();
-            ctx.fill();
-
-            // Línea de energía total E (ámbar)
-            ctx.globalAlpha = 1.0;
-            ctx.strokeStyle = colorTema('energy');
-            ctx.lineWidth = 2.0;
-            ctx.beginPath();
-            for (var m = 0; m < hist.length; m++) {
-                var ptM = hist[m];
-                var pxM = 34 + ((ptM.t - tMin) / dtSpan) * (w - 42);
-                var pyE = yBase - ptM.E * escalaY;
-                if (m === 0) ctx.moveTo(pxM, pyE);
-                else ctx.lineTo(pxM, pyE);
-            }
-            ctx.stroke();
-        }
-
-        // Tira logarítmica inferior |ΔE|/E0
-        var yTopLog = h - hLog;
-        ctx.fillStyle = colorTema('panelSub');
-        ctx.fillRect(34, yTopLog, w - 42, hLog - 2);
-        ctx.strokeStyle = colorTema('border');
-        ctx.strokeRect(34, yTopLog, w - 42, hLog - 2);
-
-        ctx.font = '500 8.5px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('textMuted');
-        ctx.fillText('log₁₀|ΔE|', 2, yTopLog + 12);
-
-        if (hist.length >= 2) {
-            ctx.strokeStyle = colorTema('th1');
-            ctx.lineWidth = 1.2;
-            ctx.beginPath();
-            for (var n = 0; n < hist.length; n++) {
-                var ptN = hist[n];
-                var pxN = 34 + ((ptN.t - tMin) / dtSpan) * (w - 42);
-                // Rango logarítmico de -14 a 0
-                var logNorm = (ptN.errLog - (-14)) / 14.0;
-                var pyLog = (yTopLog + hLog - 3) - Math.max(0, Math.min(1, logNorm)) * (hLog - 4);
-                if (n === 0) ctx.moveTo(pxN, pyLog);
-                else ctx.lineTo(pxN, pyLog);
-            }
-            ctx.stroke();
-        }
-        ctx.restore();
-    }
-
-    // Gráfica 4: Panel Contextual dinámico
-    function dibujarGraficaContextual() {
-        if (estado.modo === 'gemelo') {
-            dibujarGraficaGemelo();
-        } else if (estado.modo === 'lineal') {
-            dibujarGraficaLineal();
-        } else if (estado.modo === 'nube') {
-            dibujarGraficaNube();
-        } else {
-            // Modo Normal: el mapa FTLE ya se dibuja en su propio canvas
-            // Solo redibujamos la retícula si hace falta
-            dibujarReticulaFtle();
-        }
-    }
-
-    function dibujarGraficaGemelo() {
-        var info = ajustarCanvas(dom.gemeloCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-        ctx.clearRect(0, 0, w, h);
-
-        dibujarMarcoYRejilla(ctx, w, h, 'log₁₀ d(t)');
-        var hist = estado.historialGemelo;
-        if (hist.length < 2) return;
-
-        var tMin = hist[0].t;
-        var tMax = hist[hist.length - 1].t;
-        var dtSpan = Math.max(0.1, tMax - tMin);
-
-        var logMin = -15.0;
-        var logMax = 0.5;
-        var escalaY = (h - 26) / (logMax - logMin);
-
-        ctx.save();
-        ctx.strokeStyle = colorTema('energy');
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        for (var i = 0; i < hist.length; i++) {
-            var px = 34 + ((hist[i].t - tMin) / dtSpan) * (w - 42);
-            var py = (h - 16) - (hist[i].logD - logMin) * escalaY;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-
-        // Estimación de lambda mediante regresión lineal en la fase creciente (d < 0.2)
-        var puntosAjuste = [];
-        for (var k = 0; k < hist.length; k++) {
-            if (hist[k].d < 0.2) {
-                puntosAjuste.push(hist[k]);
-            }
-        }
-
-        var lambdaEst = 0;
-        if (puntosAjuste.length >= 10) {
-            var sumT = 0, sumL = 0, sumTL = 0, sumTT = 0;
-            var N = puntosAjuste.length;
-            for (var m = 0; m < N; m++) {
-                sumT += puntosAjuste[m].t;
-                sumL += puntosAjuste[m].logD;
-                sumTL += puntosAjuste[m].t * puntosAjuste[m].logD;
-                sumTT += puntosAjuste[m].t * puntosAjuste[m].t;
-            }
-            var pendLog10 = (N * sumTL - sumT * sumL) / (N * sumTT - sumT * sumT);
-            // d(t) ~ d0 * e^(lambda*t) -> log10(d) = pend*t -> lambda = pend * ln(10)
-            lambdaEst = pendLog10 * Math.LN10;
-        }
-
-        var tCaract = Math.sqrt(estado.params.l1 / estado.params.g);
-        var lambdaAdim = lambdaEst * tCaract;
-
-        ctx.font = '600 11px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('text');
-        var textoLambda = 'λ ≈ ' + Math.max(0, lambdaEst).toFixed(2) + ' s⁻¹ | λ·√(l₁/g) ≈ ' + Math.max(0, lambdaAdim).toFixed(2);
-        if (estado.satGemelo) {
-            textoLambda += ' (Saturado)';
-        }
-        ctx.fillText(textoLambda, 40, 20);
-        ctx.restore();
-    }
-
-    function dibujarGraficaLineal() {
-        var info = ajustarCanvas(dom.linealCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-        ctx.clearRect(0, 0, w, h);
-
-        dibujarMarcoYRejilla(ctx, w, h, 'θ₂ (rad)');
-        var hist = estado.historialLineal;
-        if (hist.length < 2) return;
-
-        var tMax = estado.t;
-        var tMin = Math.max(0, tMax - estado.ventanaHistorialS);
-        var dtSpan = Math.max(0.1, tMax - tMin);
-
-        var escalaY = (h - 26) / (2.0 * Math.PI);
-        var cy = h * 0.5;
-
-        // θ2 No lineal (Magenta)
-        ctx.save();
-        ctx.strokeStyle = colorTema('th2');
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        for (var i = 0; i < hist.length; i++) {
-            var px = 34 + ((hist[i].t - tMin) / dtSpan) * (w - 42);
-            var py = cy - hist[i].th2Nonlin * escalaY;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-
-        // θ2 Lineal Fantasma (Punteado)
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = colorTema('textMuted');
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        for (var j = 0; j < hist.length; j++) {
-            var px2 = 34 + ((hist[j].t - tMin) / dtSpan) * (w - 42);
-            var py2 = cy - hist[j].th2Lin * escalaY;
-            if (j === 0) ctx.moveTo(px2, py2);
-            else ctx.lineTo(px2, py2);
-        }
-        ctx.stroke();
-
-        ctx.font = '600 11px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('text');
-        ctx.fillText('Residual: |θ₂ - θ₂,lin| = ' + (hist[hist.length - 1].diff).toFixed(4) + ' rad', 40, 20);
-        ctx.restore();
-    }
-
-    function dibujarGraficaNube() {
-        var info = ajustarCanvas(dom.nubeCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-        ctx.clearRect(0, 0, w, h);
-
-        ctx.font = '600 11px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('text');
-        ctx.fillText('Distribución en vivo de vueltas (N = 200)', 40, 18);
-
-        var flips = estado.nubeFlips;
-        var maxF = 0;
-        for (var i = 0; i < flips.length; i++) if (flips[i] > maxF) maxF = flips[i];
-        maxF = Math.max(5, maxF);
-
-        var conteo = new Int32Array(maxF + 1);
-        for (var j = 0; j < flips.length; j++) conteo[flips[j]]++;
-
-        var maxConteo = 1;
-        for (var k = 0; k <= maxF; k++) if (conteo[k] > maxConteo) maxConteo = conteo[k];
-
-        var bw = (w - 50) / (maxF + 1);
-        ctx.save();
-        for (var b = 0; b <= maxF; b++) {
-            var bh = (conteo[b] / maxConteo) * (h - 45);
-            var bx = 40 + b * bw;
-            var by = (h - 20) - bh;
-
-            ctx.fillStyle = b === 0 ? colorTema('th1') : colorTema('th2');
-            ctx.fillRect(bx, by, Math.max(2, bw - 3), bh);
-
-            ctx.font = '9px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-            ctx.fillStyle = colorTema('textMuted');
-            ctx.fillText(b, bx + bw * 0.2, h - 6);
-        }
-        ctx.restore();
-    }
-
-    // Auxiliares de marcos de gráficas
-    function dibujarMarcoYRejilla(ctx, w, h, etiquetaY) {
-        ctx.save();
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(34, 4, w - 42, h - 22);
-
-        // Línea central horizontal
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(34, h * 0.5);
-        ctx.lineTo(w - 8, h * 0.5);
-        ctx.stroke();
-
-        ctx.font = '500 9px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('textMuted');
-        ctx.fillText(etiquetaY, 2, 12);
-        ctx.fillText('0', 20, h * 0.5 + 3);
-        ctx.fillText('t (s)', w - 30, h - 4);
-        ctx.restore();
-    }
-
-    function dibujarMarcoFase(ctx, w, h) {
-        ctx.save();
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(34, 4, w - 42, h - 22);
-
-        var cx = 34 + (w - 42) * 0.5;
-        var cy = h * 0.5;
-
-        // Ejes ortogonales
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(34, cy);
-        ctx.lineTo(w - 8, cy);
-        ctx.moveTo(cx, 4);
-        ctx.lineTo(cx, h - 18);
-        ctx.stroke();
-
-        ctx.font = '500 9px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('textMuted');
-        ctx.fillText('-π', 36, cy + 12);
-        ctx.fillText('+π', w - 24, cy + 12);
-        ctx.fillText('ω', cx + 4, 14);
-        ctx.fillText('θ', w - 18, cy - 4);
-        ctx.restore();
-    }
-
-    // =========================================================================
-    // 10. MAPA DE CAOS ADIMENSIONAL (FTLE) CON WEB WORKER (BLOB)
-    // =========================================================================
-    var CODIGO_WORKER_FTLE = [
-        "self.onmessage = function (e) {",
-        "    var d = e.data;",
-        "    var res = d.res;",
-        "    var mu = d.mu;",
-        "    var lambda = d.lambda;",
-        "    var tMax = d.tMax;",
-        "    var dt = d.dt;",
-        "    var p = { m1: 1.0, m2: mu, l1: 1.0, l2: lambda, g: 1.0 };",
-        "    var ftleGrid = new Float32Array(res * res);",
-        "    var d0 = 1e-7;",
-        "    for (var r = 0; r < res; r++) {",
-        "        var th2 = -Math.PI + (2.0 * Math.PI * r) / (res - 1);",
-        "        for (var c = 0; c < res; c++) {",
-        "            var th1 = -Math.PI + (2.0 * Math.PI * c) / (res - 1);",
-        "            var xA = [th1, th2, 0.0, 0.0];",
-        "            var xB = [th1 + d0, th2, 0.0, 0.0];",
-        "            var sumLog = 0.0;",
-        "            var nPasos = Math.floor(tMax / dt);",
-        "            for (var paso = 0; paso < nPasos; paso++) {",
-        "                xA = pasoRK4Worker(xA, dt, p);",
-        "                xB = pasoRK4Worker(xB, dt, p);",
-        "                if ((paso % 8) === 0) {",
-        "                    var dTh1 = xB[0] - xA[0];",
-        "                    var dTh2 = xB[1] - xA[1];",
-        "                    var dist = Math.sqrt(dTh1*dTh1 + dTh2*dTh2);",
-        "                    if (dist > 1e-15) {",
-        "                        sumLog += Math.log(dist / d0);",
-        "                        xB[0] = xA[0] + (dTh1 / dist) * d0;",
-        "                        xB[1] = xA[1] + (dTh2 / dist) * d0;",
-        "                    }",
-        "                }",
-        "            }",
-        "            ftleGrid[r * res + c] = Math.max(0.0, sumLog / tMax);",
-        "        }",
-        "        self.postMessage({ progreso: (r + 1) / res });",
-        "    }",
-        "    self.postMessage({ completado: true, grid: ftleGrid });",
-        "};",
-        "function campoDerivWorker(x, p) {",
-        "    var th1 = x[0], th2 = x[1], w1 = x[2], w2 = x[3];",
-        "    var delta = th1 - th2;",
-        "    var cosD = Math.cos(delta), sinD = Math.sin(delta);",
-        "    var m11 = (p.m1 + p.m2) * p.l1 * p.l1;",
-        "    var m12 = p.m2 * p.l1 * p.l2 * cosD;",
-        "    var m22 = p.m2 * p.l2 * p.l2;",
-        "    var detM = p.m2 * (p.l1*p.l1) * (p.l2*p.l2) * (p.m1 + p.m2 * sinD * sinD);",
-        "    var f1 = -p.m2 * p.l1 * p.l2 * sinD * (w2*w2) - (p.m1 + p.m2) * p.g * p.l1 * Math.sin(th1);",
-        "    var f2 = p.m2 * p.l1 * p.l2 * sinD * (w1*w1) - p.m2 * p.g * p.l2 * Math.sin(th2);",
-        "    return [w1, w2, (f1*m22 - f2*m12)/detM, (m11*f2 - m12*f1)/detM];",
-        "}",
-        "function pasoRK4Worker(x, dt, p) {",
-        "    var k1 = campoDerivWorker(x, p);",
-        "    var dt3 = dt/3.0, dt8 = dt/8.0;",
-        "    var x2 = [x[0]+dt3*k1[0], x[1]+dt3*k1[1], x[2]+dt3*k1[2], x[3]+dt3*k1[3]];",
-        "    var k2 = campoDerivWorker(x2, p);",
-        "    var x3 = [x[0]-dt3*k1[0]+dt*k2[0], x[1]-dt3*k1[1]+dt*k2[1], x[2]-dt3*k1[2]+dt*k2[2], x[3]-dt3*k1[3]+dt*k2[3]];",
-        "    var k3 = campoDerivWorker(x3, p);",
-        "    var x4 = [x[0]+dt*k1[0]-dt*k2[0]+dt*k3[0], x[1]+dt*k1[1]-dt*k2[1]+dt*k3[1], x[2]+dt*k1[2]-dt*k2[2]+dt*k3[2], x[3]+dt*k1[3]-dt*k2[3]+dt*k3[3]];",
-        "    var k4 = campoDerivWorker(x4, p);",
-        "    return [",
-        "        x[0]+dt8*(k1[0]+3*k2[0]+3*k3[0]+k4[0]),",
-        "        x[1]+dt8*(k1[1]+3*k2[1]+3*k3[1]+k4[1]),",
-        "        x[2]+dt8*(k1[2]+3*k2[2]+3*k3[2]+k4[2]),",
-        "        x[3]+dt8*(k1[3]+3*k2[3]+3*k3[3]+k4[3])",
-        "    ];",
-        "}"
-    ].join('\n');
-
-    function iniciarCalculoFtle() {
-        if (estado.ftleCalculando) return;
-        estado.ftleCalculando = true;
-
-        var res = (window.innerWidth < 1200) ? 96 : 128;
-        var mu = estado.params.m2 / estado.params.m1;
-        var lambda = estado.params.l2 / estado.params.l1;
-
-        // Vista previa rápida síncrona inmediata para carga instantánea
-        if (!estado.ftleData) {
-            var resP = 40;
-            var gridP = new Float32Array(resP * resP);
-            var pP = { m1: 1.0, m2: mu, l1: 1.0, l2: lambda, g: 1.0 };
-            var dtP = 0.05;
-            var tMaxP = 10.0;
-            var nP = Math.floor(tMaxP / dtP);
-            for (var rP = 0; rP < resP; rP++) {
-                var th2P = -Math.PI + (2.0 * Math.PI * rP) / (resP - 1);
-                for (var cP = 0; cP < resP; cP++) {
-                    var th1P = -Math.PI + (2.0 * Math.PI * cP) / (resP - 1);
-                    var xAP = [th1P, th2P, 0.0, 0.0];
-                    var xBP = [th1P + 1e-7, th2P, 0.0, 0.0];
-                    var sLogP = 0.0;
-                    for (var sP = 0; sP < nP; sP++) {
-                        xAP = PenduloFisica.pasoRK4(xAP, dtP, pP);
-                        xBP = PenduloFisica.pasoRK4(xBP, dtP, pP);
-                        if ((sP % 8) === 0) {
-                            var d1 = xBP[0] - xAP[0];
-                            var d2 = xBP[1] - xAP[1];
-                            var distP = Math.hypot(d1, d2);
-                            if (distP > 1e-15) {
-                                sLogP += Math.log(distP / 1e-7);
-                                xBP[0] = xAP[0] + (d1 / distP) * 1e-7;
-                                xBP[1] = xAP[1] + (d2 / distP) * 1e-7;
-                            }
-                        }
-                    }
-                    gridP[rP * resP + cP] = Math.max(0.0, sLogP / tMaxP);
-                }
-            }
-            estado.ftleData = { res: resP, grid: gridP, mu: mu, lambda: lambda };
-            renderizarMapaFtle();
-        }
-
-        var blob = new Blob([CODIGO_WORKER_FTLE], { type: 'application/javascript' });
-        var worker = new Worker(URL.createObjectURL(blob));
-
-        worker.onmessage = function (ev) {
-            if (ev.data.completado) {
-                estado.ftleData = {
-                    res: res,
-                    grid: ev.data.grid,
-                    mu: mu,
-                    lambda: lambda
-                };
-                estado.ftleCalculando = false;
-                worker.terminate();
-                renderizarMapaFtle();
-            }
-        };
-
-        worker.postMessage({
-            res: res,
-            mu: mu,
-            lambda: lambda,
-            tMax: 20.0,
-            dt: 0.02
-        });
-    }
-
-    function renderizarMapaFtle() {
-        var info = ajustarCanvas(dom.ftleCanvas);
-        if (!info || !estado.ftleData) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-        ctx.clearRect(0, 0, w, h);
-
-        var data = estado.ftleData;
-        var res = data.res;
-        var grid = data.grid;
-
-        var padL = 28, padB = 20, padR = 30, padT = 10;
-        var mapW = w - padL - padR;
-        var mapH = h - padT - padB;
-
-        // Renderizar mapa de color en un canvas auxiliar
-        var offCanvas = document.createElement('canvas');
-        offCanvas.width = res;
-        offCanvas.height = res;
-        var offCtx = offCanvas.getContext('2d');
-        var imgData = offCtx.createImageData(res, res);
-
-        var maxVal = 0.55;
-        for (var r = 0; r < res; r++) {
-            for (var c = 0; c < res; c++) {
-                var val = grid[r * res + c];
-                var t = Math.min(1.0, val / maxVal);
-
-                // Colormap Magma / Inferno
-                var rgb = colormapInferno(t);
-                var idx = (r * res + c) * 4;
-                imgData.data[idx] = rgb[0];
-                imgData.data[idx + 1] = rgb[1];
-                imgData.data[idx + 2] = rgb[2];
-                imgData.data[idx + 3] = 255;
-            }
-        }
-        offCtx.putImageData(imgData, 0, 0);
-
-        // Dibujar mapa escalado
-        ctx.drawImage(offCanvas, padL, padT, mapW, mapH);
-
-        // Contornos de energía Ec_m2 y Ec_m1
-        dibujarContornosEnergiaFtle(ctx, padL, padT, mapW, mapH);
-
-        // Ejes y marcas
-        ctx.save();
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(padL, padT, mapW, mapH);
-
-        ctx.font = '500 9px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('textMuted');
-        ctx.fillText('-π', padL, h - 8);
-        ctx.fillText('0', padL + mapW * 0.5 - 3, h - 8);
-        ctx.fillText('+π', padL + mapW - 12, h - 8);
-        ctx.fillText('θ₁', padL + mapW * 0.5 - 5, h - 1);
-
-        ctx.fillText('+π', 2, padT + 8);
-        ctx.fillText('0', 12, padT + mapH * 0.5 + 3);
-        ctx.fillText('-π', 2, padT + mapH - 2);
-        ctx.fillText('θ₂', 2, padT + mapH * 0.5 - 8);
-
-        // Barra de color lateral
-        var cbX = padL + mapW + 8;
-        var cbW = 10;
-        var cbH = mapH;
-        for (var y = 0; y < cbH; y++) {
-            var frac = 1.0 - (y / cbH);
-            var col = colormapInferno(frac);
-            ctx.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
-            ctx.fillRect(cbX, padT + y, cbW, 1);
-        }
-        ctx.strokeStyle = colorTema('border');
-        ctx.strokeRect(cbX, padT, cbW, cbH);
-        ctx.fillText('λ·t₀', cbX - 2, padT - 3);
-        ctx.fillText('0.5', cbX + cbW + 2, padT + 8);
-        ctx.fillText('0', cbX + cbW + 2, padT + cbH);
-        ctx.restore();
-
-        dibujarReticulaFtle();
-    }
-
-    function dibujarContornosEnergiaFtle(ctx, padL, padT, mapW, mapH) {
-        // V(th1, th2) = (m1+m2)*g*l1*(1 - cos(th1)) + m2*g*l2*(1 - cos(th2))
-        // En unidades adimensionales: V_adim(th1, th2) = (1 + mu)*(1 - cos th1) + mu*lambda*(1 - cos th2)
-        // Ec_m2 = 2 * mu * lambda
-        // Ec_m1 = 2 * (1 + mu)
-        var mu = estado.params.m2 / estado.params.m1;
-        var lambda = estado.params.l2 / estado.params.l1;
-        var ecM2 = 2.0 * mu * lambda;
-        var ecM1 = 2.0 * (1.0 + mu);
-
-        ctx.save();
-        ctx.lineWidth = 1.8;
-
-        // Contorno Ec_m2 (Cian)
-        ctx.strokeStyle = colorTema('contourM2');
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        for (var i = 0; i <= 80; i++) {
-            var th1 = -Math.PI + (2.0 * Math.PI * i) / 80;
-            var term1 = (1.0 + mu) * (1.0 - Math.cos(th1));
-            var rem = ecM2 - term1;
-            if (rem >= 0 && rem <= 2.0 * mu * lambda) {
-                var cosTh2 = 1.0 - rem / (mu * lambda);
-                cosTh2 = Math.max(-1.0, Math.min(1.0, cosTh2));
-                var th2A = Math.acos(cosTh2);
-                var px = padL + ((th1 + Math.PI) / (2 * Math.PI)) * mapW;
-                var pyA = padT + ((th2A + Math.PI) / (2 * Math.PI)) * mapH;
-                var pyB = padT + ((-th2A + Math.PI) / (2 * Math.PI)) * mapH;
-                ctx.rect(px, pyA, 1.5, 1.5);
-                ctx.rect(px, pyB, 1.5, 1.5);
-            }
-        }
-        ctx.stroke();
-
-        // Contorno Ec_m1 (Ámbar / Negro)
-        ctx.strokeStyle = colorTema('contourM1');
-        ctx.setLineDash([2, 3]);
-        ctx.beginPath();
-        for (var j = 0; j <= 80; j++) {
-            var th1B = -Math.PI + (2.0 * Math.PI * j) / 80;
-            var term1B = (1.0 + mu) * (1.0 - Math.cos(th1B));
-            var remB = ecM1 - term1B;
-            if (remB >= 0 && remB <= 2.0 * mu * lambda) {
-                var cosTh2B = 1.0 - remB / (mu * lambda);
-                cosTh2B = Math.max(-1.0, Math.min(1.0, cosTh2B));
-                var th2BA = Math.acos(cosTh2B);
-                var pxB = padL + ((th1B + Math.PI) / (2 * Math.PI)) * mapW;
-                var pyBA = padT + ((th2BA + Math.PI) / (2 * Math.PI)) * mapH;
-                var pyBB = padT + ((-th2BA + Math.PI) / (2 * Math.PI)) * mapH;
-                ctx.rect(pxB, pyBA, 1.5, 1.5);
-                ctx.rect(pxB, pyBB, 1.5, 1.5);
-            }
-        }
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    function dibujarReticulaFtle() {
-        if (!estado.ftleData || estado.modo !== 'normal') return;
-        var info = ajustarCanvas(dom.ftleCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-
-        var padL = 28, padB = 20, padR = 30, padT = 10;
-        var mapW = w - padL - padR;
-        var mapH = h - padT - padB;
-
-        // Posición actual x0
-        var th1Wrap = ((estado.x0[0] + Math.PI) % (2 * Math.PI)) - Math.PI;
-        var th2Wrap = ((estado.x0[1] + Math.PI) % (2 * Math.PI)) - Math.PI;
-
-        var px = padL + ((th1Wrap + Math.PI) / (2 * Math.PI)) * mapW;
-        var py = padT + ((th2Wrap + Math.PI) / (2 * Math.PI)) * mapH;
-
-        ctx.save();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.0;
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 4;
-
-        // Cruz con círculo
-        ctx.beginPath();
-        ctx.arc(px, py, 5, 0, 2 * Math.PI);
-        ctx.moveTo(px - 9, py);
-        ctx.lineTo(px + 9, py);
-        ctx.moveTo(px, py - 9);
-        ctx.lineTo(px, py + 9);
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    function colormapInferno(t) {
-        // Rampa suave estilo Inferno
-        t = Math.max(0.0, Math.min(1.0, t));
-        var r = Math.round(255 * Math.min(1.0, 1.5 * Math.pow(t, 0.8)));
-        var g = Math.round(255 * Math.pow(t, 2.0));
-        var b = Math.round(255 * (t < 0.6 ? 1.4 * Math.sin(t * Math.PI) : 0.4 * (1.0 - t)));
-        return [Math.min(255, r), Math.min(255, g), Math.min(255, b)];
-    }
-
-    // =========================================================================
-    // 11. LABORATORIO DE MONTE CARLO Y REPRODUCCIÓN ESTOCÁSTICA
-    // =========================================================================
-    var CODIGO_WORKER_MC = [
-        "self.onmessage = function (e) {",
-        "    var d = e.data;",
-        "    var N = d.N, sigma = d.sigma, rho = d.rho, T = d.T, dt = 0.005, baseTh1 = d.baseTh1, baseTh2 = d.baseTh2;",
-        "    var seed = d.seed;",
-        "    var p = d.params;",
-        "    var rng = mulberry32Worker(seed);",
-        "    var flipsArray = new Int32Array(N);",
-        "    var nPasos = Math.floor(T / dt);",
-        "    var l11 = sigma;",
-        "    var l21 = rho * sigma;",
-        "    var l22 = sigma * Math.sqrt(Math.max(0.0, 1.0 - rho*rho));",
-        "    for (var i = 0; i < N; i++) {",
-        "        var u1 = Math.max(1e-12, rng()), u2 = rng();",
-        "        var z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);",
-        "        var z2 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);",
-        "        var th1 = baseTh1 + l11 * z1;",
-        "        var th2 = baseTh2 + l21 * z1 + l22 * z2;",
-        "        var x = [th1, th2, 0.0, 0.0];",
-        "        var th2Cont = th2;",
-        "        for (var step = 0; step < nPasos; step++) {",
-        "            var prevTh2 = x[1];",
-        "            x = pasoRK4Worker(x, dt, p);",
-        "            var dTh2 = ((x[1] - prevTh2 + Math.PI) % (2.0 * Math.PI)) - Math.PI;",
-        "            th2Cont += dTh2;",
-        "        }",
-        "        flipsArray[i] = Math.abs(Math.floor((th2Cont + Math.PI) / (2.0 * Math.PI)));",
-        "        if ((i % 50) === 0) self.postMessage({ progreso: (i + 1) / N });",
-        "    }",
-        "    self.postMessage({ completado: true, flips: Array.from(flipsArray) });",
-        "};",
-        "function mulberry32Worker(seed) {",
-        "    var s = seed | 0;",
-        "    return function () {",
-        "        s = (s + 0x6D2B79F5) | 0;",
-        "        var t = Math.imul(s ^ (s >>> 15), 1 | s);",
-        "        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;",
-        "        return ((t ^ (t >>> 14)) >>> 0) / 4294967296.0;",
-        "    };",
-        "}",
-        "function campoDerivWorker(x, p) {",
-        "    var th1 = x[0], th2 = x[1], w1 = x[2], w2 = x[3];",
-        "    var delta = th1 - th2;",
-        "    var cosD = Math.cos(delta), sinD = Math.sin(delta);",
-        "    var m11 = (p.m1 + p.m2) * p.l1 * p.l1;",
-        "    var m12 = p.m2 * p.l1 * p.l2 * cosD;",
-        "    var m22 = p.m2 * p.l2 * p.l2;",
-        "    var detM = p.m2 * (p.l1*p.l1) * (p.l2*p.l2) * (p.m1 + p.m2 * sinD * sinD);",
-        "    var f1 = -p.m2 * p.l1 * p.l2 * sinD * (w2*w2) - (p.m1 + p.m2) * p.g * p.l1 * Math.sin(th1);",
-        "    var f2 = p.m2 * p.l1 * p.l2 * sinD * (w1*w1) - p.m2 * p.g * p.l2 * Math.sin(th2);",
-        "    return [w1, w2, (f1*m22 - f2*m12)/detM, (m11*f2 - m12*f1)/detM];",
-        "}",
-        "function pasoRK4Worker(x, dt, p) {",
-        "    var k1 = campoDerivWorker(x, p);",
-        "    var dt3 = dt/3.0, dt8 = dt/8.0;",
-        "    var x2 = [x[0]+dt3*k1[0], x[1]+dt3*k1[1], x[2]+dt3*k1[2], x[3]+dt3*k1[3]];",
-        "    var k2 = campoDerivWorker(x2, p);",
-        "    var x3 = [x[0]-dt3*k1[0]+dt*k2[0], x[1]-dt3*k1[1]+dt*k2[1], x[2]-dt3*k1[2]+dt*k2[2], x[3]-dt3*k1[3]+dt*k2[3]];",
-        "    var k3 = campoDerivWorker(x3, p);",
-        "    var x4 = [x[0]+dt*k1[0]-dt*k2[0]+dt*k3[0], x[1]+dt*k1[1]-dt*k2[1]+dt*k3[1], x[2]+dt*k1[2]-dt*k2[2]+dt*k3[2], x[3]+dt*k1[3]-dt*k2[3]+dt*k3[3]];",
-        "    var k4 = campoDerivWorker(x4, p);",
-        "    return [",
-        "        x[0]+dt8*(k1[0]+3*k2[0]+3*k3[0]+k4[0]),",
-        "        x[1]+dt8*(k1[1]+3*k2[1]+3*k3[1]+k4[1]),",
-        "        x[2]+dt8*(k1[2]+3*k2[2]+3*k3[2]+k4[2]),",
-        "        x[3]+dt8*(k1[3]+3*k2[3]+3*k3[3]+k4[3])",
-        "    ];",
-        "}"
-    ].join('\n');
-
-    var estadoMc = {
-        corriendo: false,
-        flipsActuales: null,
-        flipsBaja: null,
-        modoComparacion: false
-    };
-
-    function ejecutarMonteCarlo(esBajaEnergia) {
-        if (estadoMc.corriendo) return;
-        estadoMc.corriendo = true;
-        dom.mcProgressFill.style.width = '0%';
-        dom.mcProgressText.textContent = 'Simulando trayectorias...';
-
-        var N = parseInt(dom.mcSliderN.value, 10);
-        var sigma = parseFloat(dom.mcSliderSigma.value);
-        var rho = parseFloat(dom.mcSliderRho.value);
-        var T = parseFloat(dom.mcSliderT.value);
-        var seed = parseInt(dom.mcSeedInput.value, 10) || 20261119;
-
-        var baseTh1 = esBajaEnergia ? 0.6 : estado.x0[0];
-        var baseTh2 = esBajaEnergia ? 0.6 : estado.x0[1];
-
-        var blob = new Blob([CODIGO_WORKER_MC], { type: 'application/javascript' });
-        var worker = new Worker(URL.createObjectURL(blob));
-
-        worker.onmessage = function (ev) {
-            if (ev.data.progreso !== undefined) {
-                var p = Math.round(ev.data.progreso * 100);
-                dom.mcProgressFill.style.width = p + '%';
-                dom.mcProgressText.textContent = 'Calculando ensemble (' + p + '%)...';
-            } else if (ev.data.completado) {
-                var flips = ev.data.flips;
-                worker.terminate();
-                estadoMc.corriendo = false;
-                dom.mcProgressFill.style.width = '100%';
-                dom.mcProgressText.textContent = 'Simulación finalizada';
-
-                if (esBajaEnergia) {
-                    estadoMc.flipsBaja = flips;
-                    estadoMc.modoComparacion = true;
-                } else {
-                    estadoMc.flipsActuales = flips;
-                }
-
-                // Cálculo estadístico
-                procesarEstadisticasMonteCarlo(flips, seed);
-                renderizarHistogramaMonteCarlo();
-                dom.btnMcReplayCloud.style.display = 'inline-flex';
-            }
-        };
-
-        worker.postMessage({
-            N: N,
-            sigma: sigma,
-            rho: rho,
-            T: T,
-            seed: seed,
-            baseTh1: baseTh1,
-            baseTh2: baseTh2,
-            params: estado.params
-        });
-    }
-
-    function procesarEstadisticasMonteCarlo(flips, seed) {
-        var rng = PenduloFisica.mulberry32(seed + 999);
-        var bootRes = PenduloFisica.bootstrapPercentil(flips, 2000, rng, 0.95);
-
-        var kExitos = 0;
-        for (var i = 0; i < flips.length; i++) {
-            if (flips[i] > 0) kExitos++;
-        }
-        var wilsonRes = PenduloFisica.intervaloWilson(kExitos, flips.length);
-
-        dom.mcValMean.textContent = bootRes.media.toFixed(2);
-        dom.mcCiMean.textContent = 'IC 95%: [' + bootRes.media_ci_bajo.toFixed(2) + ', ' + bootRes.media_ci_alto.toFixed(2) + ']';
-
-        dom.mcValStd.textContent = bootRes.std.toFixed(2);
-        dom.mcCiStd.textContent = 'IC 95%: [' + bootRes.std_ci_bajo.toFixed(2) + ', ' + bootRes.std_ci_alto.toFixed(2) + ']';
-
-        dom.mcValPflip.textContent = (wilsonRes.p * 100).toFixed(1) + '%';
-        dom.mcCiWilson.textContent = 'Wilson 95%: [' + (wilsonRes.bajo * 100).toFixed(1) + '%, ' + (wilsonRes.alto * 100).toFixed(1) + '%]';
-    }
-
-    function renderizarHistogramaMonteCarlo() {
-        var info = ajustarCanvas(dom.mcHistogramCanvas);
-        if (!info) return;
-        var ctx = info.ctx, w = info.width, h = info.height;
-        ctx.clearRect(0, 0, w, h);
-
-        var fA = estadoMc.flipsActuales;
-        var fB = estadoMc.modoComparacion ? estadoMc.flipsBaja : null;
-        if (!fA) return;
-
-        var maxVueltas = 0;
-        for (var i = 0; i < fA.length; i++) if (fA[i] > maxVueltas) maxVueltas = fA[i];
-        if (fB) {
-            for (var j = 0; j < fB.length; j++) if (fB[j] > maxVueltas) maxVueltas = fB[j];
-        }
-        maxVueltas = Math.max(8, maxVueltas);
-
-        var conteoA = new Int32Array(maxVueltas + 1);
-        for (var k = 0; k < fA.length; k++) conteoA[fA[k]]++;
-
-        var conteoB = fB ? new Int32Array(maxVueltas + 1) : null;
-        if (fB) {
-            for (var m = 0; m < fB.length; m++) conteoB[fB[m]]++;
-        }
-
-        var maxFreq = 1;
-        for (var n = 0; n <= maxVueltas; n++) {
-            if (conteoA[n] > maxFreq) maxFreq = conteoA[n];
-            if (conteoB && conteoB[n] > maxFreq) maxFreq = conteoB[n];
-        }
-
-        var padL = 40, padB = 25, padT = 25, padR = 20;
-        var plotW = w - padL - padR;
-        var plotH = h - padT - padB;
-        var bw = plotW / (maxVueltas + 1);
-
-        // Marco
-        ctx.save();
-        ctx.strokeStyle = colorTema('border');
-        ctx.lineWidth = 1;
-        ctx.strokeRect(padL, padT, plotW, plotH);
-
-        // Ejes
-        ctx.font = '600 10px ' + getComputedStyle(dom.body).getPropertyValue('--font-mono');
-        ctx.fillStyle = colorTema('textMuted');
-        ctx.fillText('Frecuencia', 2, padT - 8);
-        ctx.fillText('Número de Vueltas de la Masa 2', padL + plotW * 0.35, h - 6);
-
-        // Barras
-        for (var v = 0; v <= maxVueltas; v++) {
-            var bx = padL + v * bw;
-
-            if (conteoB) {
-                // Modo A/B Comparativo: dos barras lado a lado
-                var wSub = (bw - 4) * 0.48;
-                // Barra A (Condición Actual - Magenta)
-                var bhA = (conteoA[v] / maxFreq) * plotH;
-                ctx.fillStyle = colorTema('th2');
-                ctx.fillRect(bx + 2, padT + plotH - bhA, wSub, bhA);
-
-                // Barra B (Baja Energía - Cian)
-                var bhB = (conteoB[v] / maxFreq) * plotH;
-                ctx.fillStyle = colorTema('th1');
-                ctx.fillRect(bx + 2 + wSub, padT + plotH - bhB, wSub, bhB);
+    function cambiarPestaña(nuevaTab) {
+        if (!dom.tabViews[nuevaTab]) return;
+
+        estado.tabActiva = nuevaTab;
+
+        // Botones nav
+        dom.tabBtns.forEach(function (btn) {
+            if (btn.getAttribute('data-tab') === nuevaTab) {
+                btn.classList.add('active');
             } else {
-                // Solo condición actual
-                var bh = (conteoA[v] / maxFreq) * plotH;
-                ctx.fillStyle = v === 0 ? colorTema('th1') : colorTema('th2');
-                ctx.fillRect(bx + 2, padT + plotH - bh, Math.max(2, bw - 4), bh);
+                btn.classList.remove('active');
             }
+        });
 
-            // Etiquetas eje X
-            if (maxVueltas <= 20 || (v % 2 === 0)) {
-                ctx.fillStyle = colorTema('textMuted');
-                ctx.fillText(v, bx + bw * 0.25, padT + plotH + 14);
+        // Vistas de contenido
+        Object.keys(dom.tabViews).forEach(function (tabKey) {
+            if (tabKey === nuevaTab) {
+                dom.tabViews[tabKey].style.display = 'block';
+                dom.tabViews[tabKey].classList.add('active');
+            } else {
+                dom.tabViews[tabKey].style.display = 'none';
+                dom.tabViews[tabKey].classList.remove('active');
             }
-        }
+        });
 
-        // Leyenda
-        ctx.font = '600 11px ' + getComputedStyle(dom.body).getPropertyValue('--font-sans');
-        if (conteoB) {
-            ctx.fillStyle = colorTema('th2');
-            ctx.fillText('■ Condición Actual', padL + 10, padT - 8);
-            ctx.fillStyle = colorTema('th1');
-            ctx.fillText('■ Baja Energía (0.6, 0.6 rad)', padL + 150, padT - 8);
-        } else {
-            ctx.fillStyle = colorTema('text');
-            ctx.fillText('Histograma de Pasos por Arriba (N = ' + fA.length + ')', padL + 10, padT - 8);
+        // Controles contextuales en barra lateral
+        Object.keys(dom.controlsTab).forEach(function (ctrlKey) {
+            if (ctrlKey === nuevaTab) {
+                dom.controlsTab[ctrlKey].style.display = 'block';
+            } else {
+                dom.controlsTab[ctrlKey].style.display = 'none';
+            }
+        });
+
+        if (nuevaTab === 'montecarlo') {
+            reiniciarMonteCarlo();
+        } else if (nuevaTab === 'mapacaos') {
+            redibujarMapaCaos();
         }
-        ctx.restore();
     }
 
     // =========================================================================
-    // 12. EVENTOS DE INTERFAZ Y CONTROLES
+    // 14. BUCLE PRINCIPAL DE ANIMACIÓN Y RENDERIZADO
+    // =========================================================================
+    var ultimoTiempoMs = 0;
+
+    function renderizarVistaActual() {
+        actualizarIndicadoresHUD();
+        actualizarTermometroEnergia();
+
+        if (estado.tabActiva === 'pendulo') {
+            dibujarEscenarioPendulo();
+            dibujarGraficaDerechaPendulo();
+        } else if (estado.tabActiva === 'gemelos') {
+            dibujarPestañaGemelos();
+        } else if (estado.tabActiva === 'montecarlo') {
+            dibujarPestañaMonteCarlo();
+        } else if (estado.tabActiva === 'mapacaos') {
+            redibujarMapaCaos();
+        }
+    }
+
+    function bucleAnimacion(tiempoMs) {
+        requestAnimationFrame(bucleAnimacion);
+
+        if (!ultimoTiempoMs) ultimoTiempoMs = tiempoMs;
+        var deltaMs = tiempoMs - ultimoTiempoMs;
+        ultimoTiempoMs = tiempoMs;
+
+        if (deltaMs > 100) deltaMs = 100; // Limitar salto largo
+
+        if (estado.corriendo) {
+            // Pasos de integración sub-frame para estabilidad (dt = 0.005 s)
+            var nSubPasos = Math.round((deltaMs / 1000.0) * estado.velocidad / estado.dtBase);
+            if (nSubPasos < 1) nSubPasos = 1;
+            if (nSubPasos > 20) nSubPasos = 20;
+
+            for (var sp = 0; sp < nSubPasos; sp++) {
+                pasoSimulacion(estado.dtBase);
+            }
+            registrarHistorialPunto();
+
+            // Si Monte Carlo está activo, avanzar ensemble
+            if (estado.tabActiva === 'montecarlo' && estado.mc.corriendo) {
+                var dtMc = (deltaMs / 1000.0) * estado.velocidad;
+                pasoMonteCarlo(dtMc);
+            }
+        }
+
+        renderizarVistaActual();
+    }
+
+    // =========================================================================
+    // 15. CONFIGURACIÓN DE EVENTOS E INTERACCIÓN
     // =========================================================================
     function vincularEventos() {
-        // Alternancia de tema
-        dom.btnThemeToggle.addEventListener('click', alternarTema);
-
-        // Cajón plegable de controles
-        function toggleDrawer() {
-            dom.drawerPanel.classList.toggle('open');
-        }
-        dom.btnDrawerToggle.addEventListener('click', toggleDrawer);
-        dom.btnDrawerClose.addEventListener('click', toggleDrawer);
-
-        // Teclas rápidas
-        window.addEventListener('keydown', function (e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-            if (e.key === 'c' || e.key === 'C') {
-                toggleDrawer();
-            } else if (e.key === ' ') {
-                e.preventDefault();
-                togglePausa();
-            } else if (e.key === 'r' || e.key === 'R') {
-                reiniciarSimulacion();
-            } else if (e.key === 's' || e.key === 'S') {
-                estado.corriendo = false;
-                dom.btnPlayPause.textContent = 'Reanudar';
-                pasoSimulacion(estado.dtBase);
-            } else if (e.key === 'p' || e.key === 'P') {
-                alternarPresentacion();
-            }
+        // Pestañas
+        dom.tabBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                cambiarPestaña(btn.getAttribute('data-tab'));
+            });
         });
 
-        // Modo presentación
-        function alternarPresentacion() {
-            dom.body.classList.toggle('mode-presentation');
-            if (dom.body.classList.contains('mode-presentation')) {
-                dom.btnPresentation.style.background = colorTema('energy');
+        // Tema Claro / Oscuro
+        dom.btnThemeToggle.addEventListener('click', function () {
+            if (temaActual === 'dark') {
+                temaActual = 'light';
+                dom.body.classList.remove('theme-dark');
+                dom.body.classList.add('theme-light');
+                dom.themeIcon.textContent = '☀️';
+                dom.themeText.textContent = 'Claro';
             } else {
-                dom.btnPresentation.style.background = '';
+                temaActual = 'dark';
+                dom.body.classList.remove('theme-light');
+                dom.body.classList.add('theme-dark');
+                dom.themeIcon.textContent = '🌙';
+                dom.themeText.textContent = 'Oscuro';
             }
-        }
-        dom.btnPresentation.addEventListener('click', alternarPresentacion);
+            redibujarMapaCaos();
+        });
 
-        // Botón Play / Pausa
-        function togglePausa() {
+        // Alternar barra lateral
+        dom.btnToggleSidebar.addEventListener('click', function () {
+            dom.sidebar.classList.toggle('hidden');
+        });
+
+        // Presentación
+        dom.btnPresentation.addEventListener('click', function () {
+            dom.sidebar.classList.toggle('hidden');
+        });
+
+        // Transporte
+        dom.btnPlayPause.addEventListener('click', function () {
             estado.corriendo = !estado.corriendo;
             dom.btnPlayPause.textContent = estado.corriendo ? 'Pausa' : 'Reanudar';
             if (estado.corriendo) {
@@ -1889,423 +1821,359 @@
             } else {
                 dom.btnPlayPause.classList.remove('btn-primary');
             }
-        }
-        dom.btnPlayPause.addEventListener('click', togglePausa);
+        });
 
-        // Botón Paso
+        dom.btnReset.addEventListener('click', function () {
+            inicializarSimulacion();
+        });
+
         dom.btnStep.addEventListener('click', function () {
             estado.corriendo = false;
             dom.btnPlayPause.textContent = 'Reanudar';
             dom.btnPlayPause.classList.remove('btn-primary');
-            pasoSimulacion(estado.dtBase);
+            pasoSimulacion(estado.dtBase * 2);
+            registrarHistorialPunto();
+            actualizarIndicadoresHUD();
+            actualizarTermometroEnergia();
         });
 
-        // Botón Reiniciar
-        dom.btnReset.addEventListener('click', reiniciarSimulacion);
-
-        // Selector de velocidad
-        dom.selectSpeed.addEventListener('change', function () {
-            estado.velocidad = parseFloat(this.value);
-        });
-
-        // Checkbox estela
-        dom.checkTrace.addEventListener('change', function () {
-            estado.mostrarEstela = this.checked;
-            if (!this.checked) estado.estelaM2 = [];
-        });
-
-        // Selector de integrador
-        dom.btnIntegRK4.addEventListener('click', function () {
-            estado.algoritmo = 'rk4_38';
-            dom.btnIntegRK4.classList.add('active');
-            dom.btnIntegClasico.classList.remove('active');
-        });
-        dom.btnIntegClasico.addEventListener('click', function () {
-            estado.algoritmo = 'rk4_clasico';
-            dom.btnIntegClasico.classList.add('active');
-            dom.btnIntegRK4.classList.remove('active');
-        });
-
-        // Botones de gravedad rápida
-        var btnGravs = document.querySelectorAll('.btn-gravity-preset');
-        btnGravs.forEach(function (btn) {
+        // Presets
+        dom.presetBtns.forEach(function (btn) {
             btn.addEventListener('click', function () {
-                var gVal = parseFloat(this.getAttribute('data-g'));
-                estado.params.g = gVal;
+                var pKey = btn.getAttribute('data-preset');
+                if (window.PRESETS_PENDULO && window.PRESETS_PENDULO[pKey]) {
+                    var preset = window.PRESETS_PENDULO[pKey];
+                    dom.sliderTh1.value = (preset.x0[0] * 180 / Math.PI).toFixed(0);
+                    dom.sliderTh2.value = (preset.x0[1] * 180 / Math.PI).toFixed(0);
+                    dom.sliderW1.value = preset.x0[2].toFixed(1);
+                    dom.sliderW2.value = preset.x0[3].toFixed(1);
+
+                    dom.sliderM1.value = preset.params.m1;
+                    dom.sliderM2.value = preset.params.m2;
+                    dom.sliderL1.value = preset.params.l1;
+                    dom.sliderL2.value = preset.params.l2;
+                    dom.sliderG.value = preset.params.g;
+
+                    inicializarSimulacion();
+                }
+            });
+        });
+
+        // Sliders CI
+        function onSliderCIChange() {
+            actualizarParametrosLabels();
+            inicializarSimulacion();
+        }
+        dom.sliderTh1.addEventListener('input', onSliderCIChange);
+        dom.sliderTh2.addEventListener('input', onSliderCIChange);
+        dom.sliderW1.addEventListener('input', onSliderCIChange);
+        dom.sliderW2.addEventListener('input', onSliderCIChange);
+
+        // Sliders Parámetros
+        function onSliderParamChange() {
+            actualizarParametrosLabels();
+            inicializarSimulacion();
+        }
+        dom.sliderM1.addEventListener('input', onSliderParamChange);
+        dom.sliderM2.addEventListener('input', onSliderParamChange);
+        dom.sliderL1.addEventListener('input', onSliderParamChange);
+        dom.sliderL2.addEventListener('input', onSliderParamChange);
+
+        // Gravedad
+        dom.gravityBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var gVal = parseFloat(btn.getAttribute('data-g'));
                 dom.sliderG.value = gVal;
-                dom.lblG.textContent = gVal.toFixed(2) + ' m/s²';
-                actualizarUmbralesEnergiaUI();
+                onSliderParamChange();
             });
         });
+        dom.sliderG.addEventListener('input', onSliderParamChange);
 
-        // Slider de gravedad
-        dom.sliderG.addEventListener('input', function () {
-            var val = parseFloat(this.value);
-            estado.params.g = val;
-            dom.lblG.textContent = val.toFixed(2) + ' m/s²';
-            actualizarUmbralesEnergiaUI();
+        // Checkbox Lineal
+        dom.checkLinearMode.addEventListener('change', function () {
+            estado.modoLinealActivo = dom.checkLinearMode.checked;
         });
 
-        // Sliders de geometría y masa
-        function setupSlider(slider, lbl, prop, fmt, unit) {
-            slider.addEventListener('input', function () {
-                var v = parseFloat(this.value);
-                estado.params[prop] = v;
-                lbl.textContent = v.toFixed(fmt) + (unit ? ' ' + unit : '');
-                actualizarLabelsParametros();
-                actualizarUmbralesEnergiaUI();
-            });
-        }
-        setupSlider(dom.sliderL1, dom.lblL1, 'l1', 2, 'm');
-        setupSlider(dom.sliderL2, dom.lblL2, 'l2', 2, 'm');
-        setupSlider(dom.sliderM1, dom.lblM1, 'm1', 2, 'kg');
-        setupSlider(dom.sliderM2, dom.lblM2, 'm2', 2, 'kg');
-
-        // Sliders de Condiciones Iniciales
-        dom.sliderTh1.addEventListener('input', function () {
-            var deg = parseInt(this.value, 10);
-            estado.x0[0] = deg * Math.PI / 180;
-            dom.lblTh1.textContent = deg + '°';
-            reiniciarSimulacion();
-        });
-        dom.sliderTh2.addEventListener('input', function () {
-            var deg2 = parseInt(this.value, 10);
-            estado.x0[1] = deg2 * Math.PI / 180;
-            dom.lblTh2.textContent = deg2 + '°';
-            reiniciarSimulacion();
-        });
-        dom.sliderW1.addEventListener('input', function () {
-            var w1 = parseFloat(this.value);
-            estado.x0[2] = w1;
-            dom.lblW1.textContent = w1.toFixed(1) + ' rad/s';
-            reiniciarSimulacion();
-        });
-        dom.sliderW2.addEventListener('input', function () {
-            var w2 = parseFloat(this.value);
-            estado.x0[3] = w2;
-            dom.lblW2.textContent = w2.toFixed(1) + ' rad/s';
-            reiniciarSimulacion();
+        // Alternar Retrato de Fase
+        dom.btnTogglePhaseChart.addEventListener('click', function () {
+            estado.vistaEspacioFase = !estado.vistaEspacioFase;
+            if (estado.vistaEspacioFase) {
+                dom.btnTogglePhaseChart.textContent = 'Ver ángulos θ(t)';
+                dom.chartPenduloTitle.textContent = 'Espacio Fase (θ, ω)';
+                dom.chartPenduloCaption.textContent = 'Plano de fases envuelto en (-π, π]. Las curvas cerradas son oscilaciones periódicas.';
+            } else {
+                dom.btnTogglePhaseChart.textContent = 'Ver espacio fase (θ, ω)';
+                dom.chartPenduloTitle.textContent = 'Ángulos en el tiempo';
+                dom.chartPenduloCaption.textContent = 'Ángulos en el tiempo. Cerca del reposo se ven como suma de dos oscilaciones (modos normales).';
+            }
         });
 
-        // Selector de Pestañas de Modo
-        var tabBtns = document.querySelectorAll('.mode-tab-btn');
-        tabBtns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                tabBtns.forEach(function (b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                cambiarModo(this.getAttribute('data-mode'));
-            });
+        // Gemelos: Separación δ y presets
+        dom.sliderDeltaGemelos.addEventListener('input', function () {
+            actualizarParametrosLabels();
+            inicializarSimulacion();
         });
 
-        // Pestañas del Retrato de Fase
-        var phaseBtns = document.querySelectorAll('.phase-tab-btn');
-        phaseBtns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                phaseBtns.forEach(function (b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                estado.subfaseRetrato = this.getAttribute('data-phase');
-            });
+        dom.btnGemelosRegular.addEventListener('click', function () {
+            if (window.PRESETS_PENDULO && window.PRESETS_PENDULO.cuasi_periodico) {
+                var pReg = window.PRESETS_PENDULO.cuasi_periodico;
+                dom.sliderTh1.value = (pReg.x0[0] * 180 / Math.PI).toFixed(0);
+                dom.sliderTh2.value = (pReg.x0[1] * 180 / Math.PI).toFixed(0);
+                dom.sliderW1.value = '0';
+                dom.sliderW2.value = '0';
+                inicializarSimulacion();
+            }
         });
 
-        // Botones de Presets
-        var presetBtns = document.querySelectorAll('.btn-preset-card');
-        presetBtns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var pId = this.getAttribute('data-preset');
-                cargarPreset(pId);
-            });
+        dom.btnGemelosCaotico.addEventListener('click', function () {
+            if (window.PRESETS_PENDULO && window.PRESETS_PENDULO.caotico) {
+                var pCao = window.PRESETS_PENDULO.caotico;
+                dom.sliderTh1.value = (pCao.x0[0] * 180 / Math.PI).toFixed(0);
+                dom.sliderTh2.value = (pCao.x0[1] * 180 / Math.PI).toFixed(0);
+                dom.sliderW1.value = '0';
+                dom.sliderW2.value = '0';
+                inicializarSimulacion();
+            }
         });
 
-        // Inspección interactiva del mapa FTLE (hover y click)
-        dom.ftleCanvas.addEventListener('mousemove', inspeccionarFtle);
-        dom.ftleCanvas.addEventListener('touchmove', function (e) {
-            if (e.touches.length > 0) inspeccionarFtle(e.touches[0]);
-        }, { passive: true });
+        // Monte Carlo: Controles
+        dom.sliderMcN.addEventListener('input', actualizarParametrosLabels);
+        dom.sliderMcSigma.addEventListener('input', actualizarParametrosLabels);
+        dom.sliderMcT.addEventListener('input', actualizarParametrosLabels);
+        dom.selectMcRightTarget.addEventListener('change', reiniciarMonteCarlo);
+        dom.btnRunMontecarlo.addEventListener('click', reiniciarMonteCarlo);
 
-        dom.ftleCanvas.addEventListener('click', fijarCondicionFtle);
-        dom.ftleCanvas.addEventListener('touchend', function (e) {
-            if (e.changedTouches.length > 0) fijarCondicionFtle(e.changedTouches[0]);
+        // Avanzado
+        dom.selectIntegrator.addEventListener('change', function () {
+            estado.algoritmo = dom.selectIntegrator.value;
+        });
+        dom.selectSpeed.addEventListener('change', function () {
+            estado.velocidad = parseFloat(dom.selectSpeed.value);
+        });
+        dom.checkTrace.addEventListener('change', function () {
+            estado.mostrarEstela = dom.checkTrace.checked;
+            if (!estado.mostrarEstela) estado.estelaM2 = [];
         });
 
-        // Arrastre interactivo en canvas del péndulo (cuando está en pausa)
-        dom.simCanvas.addEventListener('pointerdown', iniciarArrastreMasa);
-        dom.simCanvas.addEventListener('pointermove', moverArrastreMasa);
-        dom.simCanvas.addEventListener('pointerup', terminarArrastreMasa);
-        dom.simCanvas.addEventListener('pointercancel', terminarArrastreMasa);
+        // Mapa de caos: Hover y Click
+        vincularEventosMapaCaos();
 
-        // Monte Carlo UI
-        dom.btnMcUseCurrent.addEventListener('click', function () {
-            var d1 = Math.round(estado.x0[0] * 180 / Math.PI);
-            var d2 = Math.round(estado.x0[1] * 180 / Math.PI);
-            dom.mcBaseLabel.textContent = 'Actual (' + d1 + '°, ' + d2 + '°)';
+        // Botón "Ver este péndulo"
+        dom.btnVerEnPendulo.addEventListener('click', function () {
+            cambiarPestaña('pendulo');
         });
-        dom.mcSliderN.addEventListener('input', function () {
-            dom.mcLblN.textContent = this.value;
-        });
-        dom.mcSliderSigma.addEventListener('input', function () {
-            dom.mcLblSigma.textContent = parseFloat(this.value).toFixed(3) + ' rad';
-        });
-        dom.mcSliderRho.addEventListener('input', function () {
-            dom.mcLblRho.textContent = parseFloat(this.value).toFixed(2);
-        });
-        dom.mcSliderT.addEventListener('input', function () {
-            dom.mcLblT.textContent = this.value + ' s';
-        });
-        dom.btnMcRun.addEventListener('click', function () {
-            estadoMc.modoComparacion = false;
-            ejecutarMonteCarlo(false);
-        });
-        dom.btnMcCompareLow.addEventListener('click', function () {
-            ejecutarMonteCarlo(true);
-        });
-        dom.btnMcReplayCloud.addEventListener('click', function () {
-            cambiarModo('nube');
-            document.getElementById('tab-mode-nube').click();
-        });
+
+        // Arrastre interactivo en canvas del péndulo
+        vincularArrastrePendulo();
     }
 
-    function cambiarModo(nuevoModo) {
-        estado.modo = nuevoModo;
+    function vincularEventosMapaCaos() {
+        var canvas = dom.canvasMapaCaos;
+        if (!canvas) return;
 
-        // Ocultar todos los contenedores contextuales
-        dom.ftleContainer.style.display = 'none';
-        dom.gemeloContainer.style.display = 'none';
-        dom.linealContainer.style.display = 'none';
-        dom.nubeContainer.style.display = 'none';
-        dom.montecarloPanel.style.display = 'none';
+        function obtenerCoordsMapa(evt) {
+            var rect = canvas.getBoundingClientRect();
+            var mx = evt.clientX - rect.left;
+            var my = evt.clientY - rect.top;
 
-        if (nuevoModo === 'normal') {
-            dom.ftleContainer.style.display = 'flex';
-            dom.contextualTitle.textContent = 'Mapa de Caos Adimensional (FTLE)';
-            dom.contextualMeta.textContent = 'τ = t√(g/l₁)';
-        } else if (nuevoModo === 'gemelo') {
-            dom.gemeloContainer.style.display = 'block';
-            dom.contextualTitle.textContent = 'Separación Exponencial Gemelo';
-            dom.contextualMeta.textContent = 'd(t) en log₁₀';
-        } else if (nuevoModo === 'lineal') {
-            dom.linealContainer.style.display = 'block';
-            dom.contextualTitle.textContent = 'Lineal vs No Lineal (θ₂)';
-            dom.contextualMeta.textContent = 'Modos Normales';
-        } else if (nuevoModo === 'nube') {
-            dom.nubeContainer.style.display = 'block';
-            dom.contextualTitle.textContent = 'Distribución en Vivo Nube';
-            dom.contextualMeta.textContent = 'Ensemble N = 200';
-        } else if (nuevoModo === 'montecarlo') {
-            dom.montecarloPanel.style.display = 'flex';
+            var padLeft = 46;
+            var padBottom = 38;
+            var padTop = 16;
+            var padRight = 50;
+            var plotW = rect.width - padLeft - padRight;
+            var plotH = rect.height - padTop - padBottom;
+
+            if (mx < padLeft || mx > padLeft + plotW || my < padTop || my > padTop + plotH) {
+                return null;
+            }
+
+            var th1 = -Math.PI + ((mx - padLeft) / plotW) * (2 * Math.PI);
+            var th2 = Math.PI - ((my - padTop) / plotH) * (2 * Math.PI);
+
+            return { th1: th1, th2: th2 };
         }
 
-        reiniciarSimulacion();
+        canvas.addEventListener('mousemove', function (evt) {
+            var coords = obtenerCoordsMapa(evt);
+            if (!coords) return;
+
+            dom.mapaInspectTh1.textContent = (coords.th1 * 180 / Math.PI).toFixed(1) + '°';
+            dom.mapaInspectTh2.textContent = (coords.th2 * 180 / Math.PI).toFixed(1) + '°';
+
+            // Buscar valor en grid
+            if (estado.ftle.gridObj) {
+                var res = estado.ftle.gridObj.res;
+                var col = Math.floor(((coords.th1 + Math.PI) / (2 * Math.PI)) * res);
+                var row = Math.floor(((coords.th2 + Math.PI) / (2 * Math.PI)) * res);
+                col = Math.max(0, Math.min(res - 1, col));
+                row = Math.max(0, Math.min(res - 1, row));
+                var val = estado.ftle.gridObj.grid[row * res + col];
+                dom.mapaInspectLambda.textContent = (val !== undefined) ? val.toFixed(2) : '--';
+            }
+        });
+
+        canvas.addEventListener('click', function (evt) {
+            var coords = obtenerCoordsMapa(evt);
+            if (!coords) return;
+
+            dom.sliderTh1.value = (coords.th1 * 180 / Math.PI).toFixed(0);
+            dom.sliderTh2.value = (coords.th2 * 180 / Math.PI).toFixed(0);
+            dom.sliderW1.value = '0';
+            dom.sliderW2.value = '0';
+
+            inicializarSimulacion();
+        });
     }
 
-    function cargarPreset(pId) {
-        if (!window.PRESETS_PENDULO || !window.PRESETS_PENDULO[pId]) return;
-        var p = window.PRESETS_PENDULO[pId];
+    function vincularArrastrePendulo() {
+        var canvas = dom.canvasPenduloMain;
+        if (!canvas) return;
 
-        estado.x0 = [p.x0[0], p.x0[1], p.x0[2], p.x0[3]];
-        estado.params.m1 = p.params.m1;
-        estado.params.m2 = p.params.m2;
-        estado.params.l1 = p.params.l1;
-        estado.params.l2 = p.params.l2;
-        estado.params.g = p.params.g;
-
-        actualizarLabelsParametros();
-        actualizarUmbralesEnergiaUI();
-        reiniciarSimulacion();
-    }
-
-    // Inspección interactiva del mapa FTLE
-    function inspeccionarFtle(e) {
-        if (!estado.ftleData || dom.ftleContainer.style.display === 'none') return;
-        var rect = dom.ftleCanvas.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-
-        var padL = 28, padB = 20, padR = 30, padT = 10;
-        var mapW = rect.width - padL - padR;
-        var mapH = rect.height - padT - padB;
-
-        if (mx < padL || mx > padL + mapW || my < padT || my > padT + mapH) return;
-
-        var fracX = (mx - padL) / mapW;
-        var fracY = (my - padT) / mapH;
-
-        var th1 = -Math.PI + fracX * (2.0 * Math.PI);
-        var th2 = -Math.PI + fracY * (2.0 * Math.PI);
-
-        var res = estado.ftleData.res;
-        var c = Math.max(0, Math.min(res - 1, Math.floor(fracX * res)));
-        var r = Math.max(0, Math.min(res - 1, Math.floor(fracY * res)));
-        var ftleVal = estado.ftleData.grid[r * res + c];
-
-        dom.ftleTh1.textContent = (th1 * 180 / Math.PI).toFixed(1) + '°';
-        dom.ftleTh2.textContent = (th2 * 180 / Math.PI).toFixed(1) + '°';
-        dom.ftleVal.textContent = ftleVal.toFixed(3);
-    }
-
-    function fijarCondicionFtle(e) {
-        if (!estado.ftleData || dom.ftleContainer.style.display === 'none') return;
-        var rect = dom.ftleCanvas.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-
-        var padL = 28, padB = 20, padR = 30, padT = 10;
-        var mapW = rect.width - padL - padR;
-        var mapH = rect.height - padT - padB;
-
-        if (mx < padL || mx > padL + mapW || my < padT || my > padT + mapH) return;
-
-        var fracX = (mx - padL) / mapW;
-        var fracY = (my - padT) / mapH;
-
-        var th1 = -Math.PI + fracX * (2.0 * Math.PI);
-        var th2 = -Math.PI + fracY * (2.0 * Math.PI);
-
-        estado.x0[0] = th1;
-        estado.x0[1] = th2;
-        estado.x0[2] = 0.0;
-        estado.x0[3] = 0.0;
-
-        actualizarLabelsParametros();
-        reiniciarSimulacion();
-    }
-
-    // Arrastre interactivo de masas
-    function iniciarArrastreMasa(e) {
-        if (estado.corriendo) return; // Solo cuando está en pausa
-        var rect = dom.simCanvas.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-
-        var cx = rect.width * 0.5;
-        var cy = rect.height * 0.42;
-        var lTotal = estado.params.l1 + estado.params.l2;
-        var escala = (Math.min(rect.width, rect.height) * 0.40) / lTotal;
-
-        var l1Px = estado.params.l1 * escala;
-        var l2Px = estado.params.l2 * escala;
-
-        var x1 = cx + l1Px * Math.sin(estado.x[0]);
-        var y1 = cy + l1Px * Math.cos(estado.x[0]);
-        var x2 = x1 + l2Px * Math.sin(estado.x[1]);
-        var y2 = y1 + l2Px * Math.cos(estado.x[1]);
-
-        var dist1 = Math.hypot(mx - x1, my - y1);
-        var dist2 = Math.hypot(mx - x2, my - y2);
-
-        if (dist2 < 30) {
-            estado.arrastrandoMasa = 2;
-        } else if (dist1 < 30) {
-            estado.arrastrandoMasa = 1;
-        }
-    }
-
-    function moverArrastreMasa(e) {
-        if (!estado.arrastrandoMasa) return;
-        var rect = dom.simCanvas.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-
-        var cx = rect.width * 0.5;
-        var cy = rect.height * 0.42;
-
-        if (estado.arrastrandoMasa === 1) {
-            var ang1 = Math.atan2(mx - cx, my - cy);
-            estado.x[0] = ang1;
-            estado.x0[0] = ang1;
-            estado.x[2] = 0.0;
-            estado.x0[2] = 0.0;
-        } else if (estado.arrastrandoMasa === 2) {
-            var lTotal = estado.params.l1 + estado.params.l2;
-            var escala = (Math.min(rect.width, rect.height) * 0.40) / lTotal;
-            var l1Px = estado.params.l1 * escala;
-            var x1 = cx + l1Px * Math.sin(estado.x[0]);
-            var y1 = cy + l1Px * Math.cos(estado.x[0]);
-
-            var ang2 = Math.atan2(mx - x1, my - y1);
-            estado.x[1] = ang2;
-            estado.x0[1] = ang2;
-            estado.x[3] = 0.0;
-            estado.x0[3] = 0.0;
+        function getMousePos(evt) {
+            var rect = canvas.getBoundingClientRect();
+            var clientX = evt.clientX || (evt.touches && evt.touches[0].clientX);
+            var clientY = evt.clientY || (evt.touches && evt.touches[0].clientY);
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top,
+                cw: rect.width,
+                ch: rect.height
+            };
         }
 
-        actualizarLabelsParametros();
-        estado.e0 = PenduloFisica.energiaTotal(estado.x, estado.params);
-    }
+        function onPointerDown(evt) {
+            var pos = getMousePos(evt);
+            var ox = pos.cw * 0.5;
+            var oy = pos.ch * 0.38;
+            var esc = Math.min(pos.cw, pos.ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
-    function terminarArrastreMasa() {
-        estado.arrastrandoMasa = 0;
-    }
+            var c = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
+            var p1x = ox + c.x1 * esc, p1y = oy + c.y1 * esc;
+            var p2x = ox + c.x2 * esc, p2y = oy + c.y2 * esc;
 
-    // =========================================================================
-    // 13. BUCLE PRINCIPAL DE ANIMACIÓN A 60 FPS
-    // =========================================================================
-    var ultimoTimestamp = performance.now();
+            var d1 = Math.hypot(pos.x - p1x, pos.y - p1y);
+            var d2 = Math.hypot(pos.x - p2x, pos.y - p2y);
 
-    function buclePrincipal(timestamp) {
-        var dtReal = (timestamp - ultimoTimestamp) / 1000.0;
-        ultimoTimestamp = timestamp;
-        dtReal = Math.min(0.1, dtReal); // Limitar delta t para evitar saltos
-
-        if (estado.corriendo) {
-            var tiempoASimular = dtReal * estado.velocidad;
-            var nSubpasos = Math.max(1, Math.round(tiempoASimular / estado.dtBase));
-            var dtSub = tiempoASimular / nSubpasos;
-
-            for (var s = 0; s < nSubpasos; s++) {
-                pasoSimulacion(dtSub);
+            if (d2 < 24) {
+                estado.arrastre.activo = true;
+                estado.arrastre.masa = 2;
+                estado.corriendo = false;
+                dom.btnPlayPause.textContent = 'Reanudar';
+                dom.btnPlayPause.classList.remove('btn-primary');
+            } else if (d1 < 24) {
+                estado.arrastre.activo = true;
+                estado.arrastre.masa = 1;
+                estado.corriendo = false;
+                dom.btnPlayPause.textContent = 'Reanudar';
+                dom.btnPlayPause.classList.remove('btn-primary');
             }
         }
 
-        // Actualizar HUD Cuantitativo
-        dom.valTime.textContent = estado.t.toFixed(2) + ' s';
-        var eK = PenduloFisica.energiaCinetica(estado.x, estado.params);
-        var eV = PenduloFisica.energiaPotencial(estado.x, estado.params);
-        var eTotal = eK + eV;
+        function onPointerMove(evt) {
+            if (!estado.arrastre.activo) return;
+            var pos = getMousePos(evt);
+            var ox = pos.cw * 0.5;
+            var oy = pos.ch * 0.38;
+            var esc = Math.min(pos.cw, pos.ch) * 0.28 / Math.max(0.1, (estado.params.l1 + estado.params.l2));
 
-        dom.valEnergyTotal.textContent = eTotal.toFixed(2) + ' J';
-        dom.valDeltaE.textContent = estado.deltaERel.toExponential(2);
-        dom.valFlipsM2.textContent = estado.vueltasM2;
+            var c = PenduloFisica.posicionesCartesianas(estado.x, estado.params);
+            var p1x = ox + c.x1 * esc, p1y = oy + c.y1 * esc;
 
-        dom.valEnergyK.textContent = eK.toFixed(2);
-        dom.valEnergyV.textContent = eV.toFixed(2);
-        dom.valEnergyE.textContent = eTotal.toFixed(2);
+            if (estado.arrastre.masa === 1) {
+                var dx1 = pos.x - ox;
+                var dy1 = pos.y - oy;
+                var newTh1 = Math.atan2(dx1, dy1);
+                dom.sliderTh1.value = (newTh1 * 180 / Math.PI).toFixed(0);
+                dom.sliderW1.value = '0';
+                dom.sliderW2.value = '0';
+                inicializarSimulacion();
+            } else if (estado.arrastre.masa === 2) {
+                var dx2 = pos.x - p1x;
+                var dy2 = pos.y - p1y;
+                var newTh2 = Math.atan2(dx2, dy2);
+                dom.sliderTh2.value = (newTh2 * 180 / Math.PI).toFixed(0);
+                dom.sliderW1.value = '0';
+                dom.sliderW2.value = '0';
+                inicializarSimulacion();
+            }
+        }
 
-        // Actualizar barra de energía
-        var u = PenduloFisica.umbralesEnergia(estado.params);
-        var eEscala = Math.max(u.Ec_ambas, eTotal);
-        var pctK = Math.min(100, Math.max(0, (eK / eEscala) * 100));
-        var pctV = Math.min(100, Math.max(0, (eV / eEscala) * 100));
-        dom.fillKinetic.style.width = pctK + '%';
-        dom.fillPotential.style.width = pctV + '%';
+        function onPointerUp() {
+            estado.arrastre.activo = false;
+            estado.arrastre.masa = 0;
+        }
 
-        // Renderizado
-        dibujarEscenario();
-        dibujarGraficaAngulos();
-        dibujarGraficaFase();
-        dibujarGraficaEnergia();
-        dibujarGraficaContextual();
+        canvas.addEventListener('mousedown', onPointerDown);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
 
-        requestAnimationFrame(buclePrincipal);
+        canvas.addEventListener('touchstart', onPointerDown, { passive: true });
+        window.addEventListener('touchmove', onPointerMove, { passive: true });
+        window.addEventListener('touchend', onPointerUp);
     }
 
     // =========================================================================
-    // 14. ARRANQUE
+    // 16. MODO CAPTURA Y CONFIGURACIÓN POR URL (?tab=...&capture=1)
     // =========================================================================
-    window.addEventListener('DOMContentLoaded', function () {
+    function aplicarParametrosUrl() {
+        var params = new URLSearchParams(window.location.search);
+
+        var tabParam = params.get('tab');
+        if (tabParam && ['pendulo', 'gemelos', 'montecarlo', 'mapacaos'].indexOf(tabParam) !== -1) {
+            cambiarPestaña(tabParam);
+        }
+
+        var themeParam = params.get('theme');
+        if (themeParam === 'light') {
+            temaActual = 'light';
+            dom.body.classList.remove('theme-dark');
+            dom.body.classList.add('theme-light');
+            dom.themeIcon.textContent = '☀️';
+            dom.themeText.textContent = 'Claro';
+        }
+
+        var captureParam = params.get('capture');
+        if (captureParam === '1') {
+            // Calentar simulaciones para que las gráficas y estadísticas estén completas
+            if (estado.tabActiva === 'montecarlo') {
+                reiniciarMonteCarlo();
+                for (var mcStep = 0; mcStep < 300; mcStep++) {
+                    pasoMonteCarlo(0.05);
+                }
+            } else if (estado.tabActiva === 'gemelos') {
+                for (var gStep = 0; gStep < 1400; gStep++) {
+                    pasoSimulacion(estado.dtBase);
+                    if (gStep % 3 === 0) registrarHistorialPunto();
+                }
+            } else {
+                for (var step = 0; step < 800; step++) {
+                    pasoSimulacion(estado.dtBase);
+                    if (step % 4 === 0) registrarHistorialPunto();
+                }
+            }
+            renderizarVistaActual();
+        }
+    }
+
+    // =========================================================================
+    // 17. ARRANQUE AL CARGAR EL DOM
+    // =========================================================================
+    function arrancarApp() {
+        initDomReferences();
+        inicializarSimulacion();
+        inicializarMapaCaos();
         vincularEventos();
-        actualizarLabelsParametros();
-        actualizarUmbralesEnergiaUI();
-        if (window.location.search.indexOf('theme=light') !== -1) {
-            alternarTema();
-        }
-        reiniciarSimulacion();
-        iniciarCalculoFtle();
-        if (window.location.search.indexOf('capture=1') !== -1) {
-            for (var k = 0; k < 220; k++) {
-                pasoSimulacion(0.01);
-            }
-        }
-        requestAnimationFrame(buclePrincipal);
-    });
+        aplicarParametrosUrl();
+        renderizarVistaActual();
+
+        // Iniciar loop continuo
+        requestAnimationFrame(bucleAnimacion);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', arrancarApp);
+    } else {
+        arrancarApp();
+    }
 
 })();
