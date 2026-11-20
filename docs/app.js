@@ -71,6 +71,14 @@
         return TEMAS[temaActual][nombre] || '#ffffff';
     }
 
+    function canvasFont(sizePx, weight, family) {
+        var scale = (typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('presentation-mode')) ? 1.25 : 1.0;
+        var finalSize = Math.max(9, Math.round(sizePx * scale));
+        var wt = weight ? (weight + ' ') : '';
+        var fam = family || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        return wt + finalSize + 'px ' + fam;
+    }
+
     // =========================================================================
     // 2. ESTADO GLOBAL DE LA APLICACIÓN
     // =========================================================================
@@ -203,12 +211,8 @@
         // Sliders CI
         dom.sliderTh1 = document.getElementById('slider-th1');
         dom.sliderTh2 = document.getElementById('slider-th2');
-        dom.sliderW1 = document.getElementById('slider-w1');
-        dom.sliderW2 = document.getElementById('slider-w2');
         dom.lblTh1 = document.getElementById('lbl-th1');
         dom.lblTh2 = document.getElementById('lbl-th2');
-        dom.lblW1 = document.getElementById('lbl-w1');
-        dom.lblW2 = document.getElementById('lbl-w2');
 
         // Sliders Parámetros
         dom.sliderM1 = document.getElementById('slider-m1');
@@ -309,6 +313,14 @@
     // =========================================================================
     // 4. INICIALIZACIÓN Y CONFIGURACIÓN FÍSICA
     // =========================================================================
+    function reiniciarSimulacion() {
+        estado.corriendo = false;
+        dom.btnPlayPause.textContent = 'Reanudar';
+        dom.btnPlayPause.classList.remove('btn-primary');
+        inicializarSimulacion();
+        renderizarVistaActual();
+    }
+
     function inicializarSimulacion() {
         estado.params = PenduloFisica.crearParametros(
             parseFloat(dom.sliderM1.value),
@@ -321,8 +333,8 @@
 
         var th1 = parseFloat(dom.sliderTh1.value) * (Math.PI / 180.0);
         var th2 = parseFloat(dom.sliderTh2.value) * (Math.PI / 180.0);
-        var w1 = parseFloat(dom.sliderW1.value);
-        var w2 = parseFloat(dom.sliderW2.value);
+        var w1 = 0.0;
+        var w2 = 0.0;
 
         estado.x0 = [th1, th2, w1, w2];
         estado.x = [th1, th2, w1, w2];
@@ -530,12 +542,13 @@
         // Panel Izquierdo: Siempre Baja Energía (0.6, 0.6)
         estado.mc.left.x0 = [0.6, 0.6, 0.0, 0.0];
         estado.mc.left.pendulos = [];
+        estado.mc.left.puntosIniciales = [];
         estado.mc.left.flips = new Array(n).fill(0);
         estado.mc.left.th2Continuo = new Array(n).fill(0.6);
 
         // Panel Derecho: Alta Energía (2.6, 2.6) o Condición Actual
         if (targetDerecho === 'actual') {
-            estado.mc.right.x0 = [estado.x0[0], estado.x0[1], estado.x0[2], estado.x0[3]];
+            estado.mc.right.x0 = [estado.x0[0], estado.x0[1], 0.0, 0.0];
             dom.mcRightTitle.textContent = 'Condición actual (' + (estado.x0[0] * 180 / Math.PI).toFixed(0) + '°, ' + (estado.x0[1] * 180 / Math.PI).toFixed(0) + '°)';
             dom.mcRightSub.textContent = 'E = ' + estado.e0.toFixed(1) + ' J';
         } else {
@@ -544,6 +557,7 @@
             dom.mcRightSub.textContent = 'E > Ec_m2 (régimen caótico)';
         }
         estado.mc.right.pendulos = [];
+        estado.mc.right.puntosIniciales = [];
         estado.mc.right.flips = new Array(n).fill(0);
         estado.mc.right.th2Continuo = new Array(n).fill(estado.mc.right.x0[1]);
 
@@ -559,6 +573,7 @@
             var th1L = estado.mc.left.x0[0] + sigma * z0;
             var th2L = estado.mc.left.x0[1] + sigma * z1;
             estado.mc.left.pendulos.push([th1L, th2L, 0.0, 0.0]);
+            estado.mc.left.puntosIniciales.push([th1L * 180 / Math.PI, th2L * 180 / Math.PI]);
             estado.mc.left.th2Continuo[i] = th2L;
         }
 
@@ -571,7 +586,8 @@
 
             var th1R = estado.mc.right.x0[0] + sigma * z0r;
             var th2R = estado.mc.right.x0[1] + sigma * z1r;
-            estado.mc.right.pendulos.push([th1R, th2R, estado.mc.right.x0[2], estado.mc.right.x0[3]]);
+            estado.mc.right.pendulos.push([th1R, th2R, 0.0, 0.0]);
+            estado.mc.right.puntosIniciales.push([th1R * 180 / Math.PI, th2R * 180 / Math.PI]);
             estado.mc.right.th2Continuo[j] = th2R;
         }
 
@@ -767,7 +783,7 @@
             ctx.fillStyle = color('panelSub');
             ctx.fillRect(padLeft, padTop, plotW, plotH);
             ctx.fillStyle = color('textMuted');
-            ctx.font = '13px system-ui, sans-serif';
+            ctx.font = canvasFont(13);
             ctx.textAlign = 'center';
             ctx.fillText('Calculando mapa FTLE...', padLeft + plotW / 2, padTop + plotH / 2);
         }
@@ -781,7 +797,7 @@
         ctx.strokeRect(padLeft, padTop, plotW, plotH);
 
         ctx.fillStyle = color('textMuted');
-        ctx.font = '11px system-ui, sans-serif';
+        ctx.font = canvasFont(11);
         ctx.textAlign = 'center';
 
         var ticks = [
@@ -802,12 +818,12 @@
             ctx.fillText(ticks[i].txt, tx, padTop + plotH + 16);
         }
         ctx.fillStyle = color('text');
-        ctx.font = '12px system-ui, sans-serif';
+        ctx.font = canvasFont(12);
         ctx.fillText('Ángulo inicial θ₁(0) [rad]', padLeft + plotW / 2, padTop + plotH + 32);
 
         // Eje Y: θ₂
         ctx.fillStyle = color('textMuted');
-        ctx.font = '11px system-ui, sans-serif';
+        ctx.font = canvasFont(11);
         ctx.textAlign = 'right';
         for (var j = 0; j < ticks.length; j++) {
             var ty = padTop + plotH - ((ticks[j].val + Math.PI) / (2 * Math.PI)) * plotH;
@@ -821,7 +837,7 @@
         ctx.translate(padLeft - 32, padTop + plotH / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillStyle = color('text');
-        ctx.font = '12px system-ui, sans-serif';
+        ctx.font = canvasFont(12);
         ctx.textAlign = 'center';
         ctx.fillText('Ángulo inicial θ₂(0) [rad]', 0, 0);
         ctx.restore();
@@ -841,7 +857,7 @@
         ctx.strokeRect(cbX, padTop, cbW, cbH);
 
         ctx.fillStyle = color('textMuted');
-        ctx.font = '10px system-ui, sans-serif';
+        ctx.font = canvasFont(10);
         ctx.textAlign = 'left';
         ctx.fillText('≥3.5', cbX + cbW + 4, padTop + 8);
         ctx.fillText('1.7', cbX + cbW + 4, padTop + cbH / 2 + 4);
@@ -903,7 +919,7 @@
         ctx.stroke();
 
         ctx.fillStyle = color('text');
-        ctx.font = '11px system-ui, sans-serif';
+        ctx.font = canvasFont(11);
         ctx.textAlign = 'left';
         ctx.fillText('E = Ec,m2 (vuelta m₂)', legX + 36, legY + 18);
 
@@ -1112,7 +1128,7 @@
 
         // Etiqueta m1 al lado derecho
         ctx.fillStyle = color('text');
-        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.font = canvasFont(13, 'bold');
         ctx.textAlign = 'left';
         ctx.fillText('m₁ (' + estado.params.m1.toFixed(1) + ' kg)', p1x + radioM1 + 6, p1y + 4);
 
@@ -1128,7 +1144,7 @@
 
         // Etiqueta m2 al lado derecho
         ctx.fillStyle = color('text');
-        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.font = canvasFont(13, 'bold');
         ctx.textAlign = 'left';
         ctx.fillText('m₂ (' + estado.params.m2.toFixed(1) + ' kg)', p2x + radioM2 + 6, p2y + 4);
 
@@ -1231,7 +1247,7 @@
             ctx.stroke();
 
             ctx.fillStyle = color('textMuted');
-            ctx.font = '11px system-ui, sans-serif';
+            ctx.font = canvasFont(11);
             ctx.textAlign = 'right';
             ctx.fillText('π', padLeft - 6, padTop + 10);
             ctx.fillText('0', padLeft - 6, yZero + 4);
@@ -1264,7 +1280,7 @@
             ctx.stroke();
 
             ctx.fillStyle = color('textMuted');
-            ctx.font = '11px system-ui, sans-serif';
+            ctx.font = canvasFont(11);
             ctx.textAlign = 'center';
             ctx.fillText('θ ∈ (-π, π]', cx, padTop + plotH + 18);
 
@@ -1434,7 +1450,7 @@
             ctxS.fillStyle = colBase;
             ctxS.beginPath(); ctxS.arc(legX + 16, legY + 15, 6, 0, 2 * Math.PI); ctxS.fill();
             ctxS.fillStyle = color('text');
-            ctxS.font = '11px system-ui, sans-serif';
+            ctxS.font = canvasFont(11);
             ctxS.textAlign = 'left';
             ctxS.fillText('Péndulo 1 (base)', legX + 28, legY + 19);
 
@@ -1442,6 +1458,7 @@
             ctxS.fillStyle = colGem;
             ctxS.beginPath(); ctxS.arc(legX + 16, legY + 31, 6, 0, 2 * Math.PI); ctxS.fill();
             ctxS.fillStyle = color('text');
+            ctxS.font = canvasFont(11);
             ctxS.fillText('Péndulo 2 (+0.001 rad)', legX + 28, legY + 35);
 
             ctxS.restore();
@@ -1479,7 +1496,7 @@
                 ctxC.strokeRect(padL, padT, gw, gh);
 
                 ctxC.fillStyle = color('textMuted');
-                ctxC.font = '11px system-ui, sans-serif';
+                ctxC.font = canvasFont(11);
                 ctxC.textAlign = 'right';
                 ctxC.fillText('10⁰', padL - 6, padT + gh * 0.2);
                 ctxC.fillText('10⁻²', padL - 6, padT + gh * 0.6);
@@ -1513,15 +1530,27 @@
     // =========================================================================
     function dibujarPestañaMonteCarlo() {
         // Panel Izquierdo: Stage + Histograma
-        dibujarMiniEnsemble(dom.canvasMcStageLeft, estado.mc.left.pendulos, color('th1'));
+        dibujarMiniEnsemble(
+            dom.canvasMcStageLeft,
+            estado.mc.left.pendulos,
+            color('th1'),
+            estado.mc.left.puntosIniciales,
+            [0.6 * 180 / Math.PI, 0.6 * 180 / Math.PI]
+        );
         dibujarHistogramaFlips(dom.canvasMcHistLeft, estado.mc.left.flips, color('th1'));
 
         // Panel Derecho: Stage + Histograma
-        dibujarMiniEnsemble(dom.canvasMcStageRight, estado.mc.right.pendulos, color('th2'));
+        dibujarMiniEnsemble(
+            dom.canvasMcStageRight,
+            estado.mc.right.pendulos,
+            color('th2'),
+            estado.mc.right.puntosIniciales,
+            [estado.mc.right.x0[0] * 180 / Math.PI, estado.mc.right.x0[1] * 180 / Math.PI]
+        );
         dibujarHistogramaFlips(dom.canvasMcHistRight, estado.mc.right.flips, color('th2'));
     }
 
-    function dibujarMiniEnsemble(canvas, pendulos, estiloColor) {
+    function dibujarMiniEnsemble(canvas, pendulos, estiloColor, puntosIniciales, centroNominalDeg) {
         if (!canvas) return;
         var rect = canvas.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
@@ -1572,6 +1601,64 @@
         ctx.arc(ox, oy, 2.5, 0, 2 * Math.PI);
         ctx.fill();
 
+        // Recuadro "Condiciones iniciales" con los N puntos en grados
+        if (puntosIniciales && puntosIniciales.length > 0 && centroNominalDeg) {
+            var boxW = Math.min(150, cw * 0.36);
+            var boxH = Math.min(110, ch * 0.55);
+            var boxX = 10;
+            var boxY = 10;
+
+            ctx.fillStyle = (temaActual === 'dark') ? 'rgba(18, 24, 38, 0.88)' : 'rgba(255, 255, 255, 0.88)';
+            ctx.strokeStyle = color('border');
+            ctx.lineWidth = 1;
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            ctx.fillStyle = color('text');
+            ctx.font = canvasFont(10, 'bold');
+            ctx.textAlign = 'left';
+            ctx.fillText('Condiciones iniciales', boxX + 6, boxY + 14);
+
+            var sigDeg = (estado.mc.sigma * 180.0 / Math.PI).toFixed(2);
+            ctx.fillStyle = color('textMuted');
+            ctx.font = canvasFont(9);
+            ctx.fillText('error σ = ' + sigDeg + '°', boxX + 6, boxY + 26);
+
+            var spPadX = 6;
+            var spTop = boxY + 32;
+            var spW = boxW - 12;
+            var spH = boxH - 38;
+
+            ctx.strokeStyle = color('border');
+            ctx.strokeRect(boxX + spPadX, spTop, spW, spH);
+
+            var midX = boxX + spPadX + spW * 0.5;
+            var midY = spTop + spH * 0.5;
+            ctx.strokeStyle = 'rgba(150, 160, 180, 0.3)';
+            ctx.beginPath();
+            ctx.moveTo(midX, spTop); ctx.lineTo(midX, spTop + spH);
+            ctx.moveTo(boxX + spPadX, midY); ctx.lineTo(boxX + spPadX + spW, midY);
+            ctx.stroke();
+
+            var spanDeg = Math.max(1.5, parseFloat(sigDeg) * 2.8);
+            var cTh1 = centroNominalDeg[0];
+            var cTh2 = centroNominalDeg[1];
+
+            ctx.fillStyle = estiloColor;
+            for (var pIdx = 0; pIdx < puntosIniciales.length; pIdx++) {
+                var pt = puntosIniciales[pIdx];
+                var dTh1 = pt[0] - cTh1;
+                var dTh2 = pt[1] - cTh2;
+                var ppx = midX + (dTh1 / spanDeg) * (spW * 0.46);
+                var ppy = midY - (dTh2 / spanDeg) * (spH * 0.46);
+                if (ppx >= boxX + spPadX && ppx <= boxX + spPadX + spW && ppy >= spTop && ppy <= spTop + spH) {
+                    ctx.beginPath();
+                    ctx.arc(ppx, ppy, 1.8, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+        }
+
         ctx.restore();
     }
 
@@ -1592,7 +1679,7 @@
         ctx.fillStyle = color('panelSub');
         ctx.fillRect(0, 0, cw, ch);
 
-        var padL = 40, padR = 14, padT = 16, padB = 26;
+        var padL = 50, padR = 14, padT = 16, padB = 42;
         var gw = cw - padL - padR;
         var gh = ch - padT - padB;
 
@@ -1627,14 +1714,14 @@
         ctx.lineTo(padL + gw, padT + gh);
         ctx.stroke();
 
-        // Etiqueta vertical "Frecuencia" sin encimarse con el título
+        // Etiqueta vertical "Número de péndulos"
         ctx.save();
-        ctx.translate(14, padT + gh * 0.5);
+        ctx.translate(16, padT + gh * 0.5);
         ctx.rotate(-Math.PI * 0.5);
-        ctx.fillStyle = color('textMuted');
-        ctx.font = '10px system-ui, sans-serif';
+        ctx.fillStyle = color('text');
+        ctx.font = canvasFont(11);
         ctx.textAlign = 'center';
-        ctx.fillText('Frecuencia', 0, 0);
+        ctx.fillText('Número de péndulos', 0, 0);
         ctx.restore();
 
         // Barras
@@ -1654,12 +1741,18 @@
             // Etiquetas eje X
             if (maxBins <= 10 || b % 2 === 0) {
                 ctx.fillStyle = color('textMuted');
-                ctx.font = '10px system-ui, sans-serif';
+                ctx.font = canvasFont(10);
                 ctx.textAlign = 'center';
                 ctx.fillText(b.toString(), bx + barW * 0.5, padT + gh + 14);
                 ctx.fillStyle = estiloColor;
             }
         }
+
+        // Título del eje X
+        ctx.fillStyle = color('text');
+        ctx.font = canvasFont(11);
+        ctx.textAlign = 'center';
+        ctx.fillText('Vueltas de la masa 2 en T = ' + Math.round(estado.mc.tMax) + ' s', padL + gw * 0.5, padT + gh + 34);
 
         ctx.restore();
     }
@@ -1675,8 +1768,8 @@
         var ecAmbas = umb.Ec_ambas;
 
         // Actualizar textos de los marcadores con sus valores en Joules
-        dom.markLblM2.textContent = 'm₂ puede dar la vuelta (' + ec2.toFixed(1) + ' J)';
-        dom.markLblM1.textContent = 'm₁ puede dar la vuelta (' + ec1.toFixed(1) + ' J)';
+        dom.markLblM2.textContent = 'm₂ (' + ec2.toFixed(1) + ' J)';
+        dom.markLblM1.textContent = 'm₁ (' + ec1.toFixed(1) + ' J)';
         dom.markLblAmbas.textContent = 'ambas (' + ecAmbas.toFixed(1) + ' J)';
 
         // Posiciones relativas en la barra (escala de 0 a Ec_ambas * 1.15)
@@ -1727,8 +1820,6 @@
     function actualizarParametrosLabels() {
         dom.lblTh1.textContent = parseFloat(dom.sliderTh1.value).toFixed(0) + '°';
         dom.lblTh2.textContent = parseFloat(dom.sliderTh2.value).toFixed(0) + '°';
-        dom.lblW1.textContent = parseFloat(dom.sliderW1.value).toFixed(1) + ' rad/s';
-        dom.lblW2.textContent = parseFloat(dom.sliderW2.value).toFixed(1) + ' rad/s';
 
         dom.lblM1.textContent = parseFloat(dom.sliderM1.value).toFixed(2) + ' kg';
         dom.lblM2.textContent = parseFloat(dom.sliderM2.value).toFixed(2) + ' kg';
@@ -1746,27 +1837,57 @@
         dom.lblDeltaGemelos.textContent = parseFloat(dom.sliderDeltaGemelos.value).toFixed(4) + ' rad';
 
         dom.lblMcN.textContent = dom.sliderMcN.value;
-        dom.lblMcSigma.textContent = parseFloat(dom.sliderMcSigma.value).toFixed(3) + ' rad';
+        var sigDeg = (parseFloat(dom.sliderMcSigma.value) * 180.0 / Math.PI).toFixed(2);
+        dom.lblMcSigma.textContent = sigDeg + '°';
         dom.lblMcT.textContent = dom.sliderMcT.value + ' s';
     }
 
     function aplicarPreset(pKey) {
-        if (window.PRESETS_PENDULO && window.PRESETS_PENDULO[pKey]) {
+        if (pKey === 'pequenas_oscilaciones') {
+            if (dom.sliderTh1) dom.sliderTh1.value = (0.20 * 180 / Math.PI).toFixed(1);
+            if (dom.sliderTh2) dom.sliderTh2.value = (0.25 * 180 / Math.PI).toFixed(1);
+        } else if (pKey === 'modo_normal_en_fase') {
+            var m1 = parseFloat(dom.sliderM1.value);
+            var m2 = parseFloat(dom.sliderM2.value);
+            var l1 = parseFloat(dom.sliderL1.value);
+            var l2 = parseFloat(dom.sliderL2.value);
+            var g = parseFloat(dom.sliderG.value);
+            var mu = m2 / m1;
+            var a20 = -(1.0 + mu) * g / l1;
+            var a21 = mu * g / l1;
+            var a30 = (1.0 + mu) * g / l2;
+            var a31 = -(1.0 + mu) * g / l2;
+            var b = -(a20 + a31);
+            var c = a20 * a31 - a21 * a30;
+            var disc = Math.sqrt(Math.max(0.0, b * b - 4.0 * c));
+            var w1_sq = 0.5 * (b - disc);
+            var ratio = Math.abs(a21) > 1e-9 ? (-(a20 + w1_sq) / a21) : Math.SQRT2;
+            var th1 = 0.1;
+            var th2 = ratio * th1;
+            if (dom.sliderTh1) dom.sliderTh1.value = (th1 * 180 / Math.PI).toFixed(1);
+            if (dom.sliderTh2) dom.sliderTh2.value = (th2 * 180 / Math.PI).toFixed(1);
+        } else if (pKey === 'caotico') {
+            if (dom.sliderTh1) dom.sliderTh1.value = (2.6 * 180 / Math.PI).toFixed(1);
+            if (dom.sliderTh2) dom.sliderTh2.value = (2.6 * 180 / Math.PI).toFixed(1);
+        } else if (pKey === 'casi_invertido') {
+            var th = Math.PI - 0.05;
+            if (dom.sliderTh1) dom.sliderTh1.value = (th * 180 / Math.PI).toFixed(1);
+            if (dom.sliderTh2) dom.sliderTh2.value = (th * 180 / Math.PI).toFixed(1);
+        } else if (window.PRESETS_PENDULO && window.PRESETS_PENDULO[pKey]) {
             var preset = window.PRESETS_PENDULO[pKey];
-            if (dom.sliderTh1) dom.sliderTh1.value = (preset.x0[0] * 180 / Math.PI).toFixed(0);
-            if (dom.sliderTh2) dom.sliderTh2.value = (preset.x0[1] * 180 / Math.PI).toFixed(0);
-            if (dom.sliderW1) dom.sliderW1.value = preset.x0[2].toFixed(1);
-            if (dom.sliderW2) dom.sliderW2.value = preset.x0[3].toFixed(1);
-
-            if (dom.sliderM1) dom.sliderM1.value = preset.params.m1;
-            if (dom.sliderM2) dom.sliderM2.value = preset.params.m2;
-            if (dom.sliderL1) dom.sliderL1.value = preset.params.l1;
-            if (dom.sliderL2) dom.sliderL2.value = preset.params.l2;
-            if (dom.sliderG) dom.sliderG.value = preset.params.g;
-
-            actualizarParametrosLabels();
-            inicializarSimulacion();
+            if (dom.sliderTh1) dom.sliderTh1.value = (preset.x0[0] * 180 / Math.PI).toFixed(1);
+            if (dom.sliderTh2) dom.sliderTh2.value = (preset.x0[1] * 180 / Math.PI).toFixed(1);
+            if (preset.params) {
+                if (dom.sliderM1) dom.sliderM1.value = preset.params.m1;
+                if (dom.sliderM2) dom.sliderM2.value = preset.params.m2;
+                if (dom.sliderL1) dom.sliderL1.value = preset.params.l1;
+                if (dom.sliderL2) dom.sliderL2.value = preset.params.l2;
+                if (dom.sliderG) dom.sliderG.value = preset.params.g;
+            }
         }
+
+        actualizarParametrosLabels();
+        reiniciarSimulacion();
     }
 
     // =========================================================================
@@ -1902,7 +2023,9 @@
 
         // Presentación
         dom.btnPresentation.addEventListener('click', function () {
-            dom.sidebar.classList.toggle('hidden');
+            document.documentElement.classList.toggle('presentation-mode');
+            document.body.classList.toggle('mode-presentation');
+            setTimeout(renderizarVistaActual, 30);
         });
 
         // Transporte
@@ -1917,7 +2040,7 @@
         });
 
         dom.btnReset.addEventListener('click', function () {
-            inicializarSimulacion();
+            reiniciarSimulacion();
         });
 
         dom.btnStep.addEventListener('click', function () {
@@ -1945,8 +2068,6 @@
         }
         dom.sliderTh1.addEventListener('input', onSliderCIChange);
         dom.sliderTh2.addEventListener('input', onSliderCIChange);
-        dom.sliderW1.addEventListener('input', onSliderCIChange);
-        dom.sliderW2.addEventListener('input', onSliderCIChange);
 
         // Sliders Parámetros
         function onSliderParamChange() {
@@ -1994,25 +2115,17 @@
         });
 
         dom.btnGemelosRegular.addEventListener('click', function () {
-            if (window.PRESETS_PENDULO && window.PRESETS_PENDULO.cuasi_periodico) {
-                var pReg = window.PRESETS_PENDULO.cuasi_periodico;
-                dom.sliderTh1.value = (pReg.x0[0] * 180 / Math.PI).toFixed(0);
-                dom.sliderTh2.value = (pReg.x0[1] * 180 / Math.PI).toFixed(0);
-                dom.sliderW1.value = '0';
-                dom.sliderW2.value = '0';
-                inicializarSimulacion();
-            }
+            dom.sliderTh1.value = (0.20 * 180 / Math.PI).toFixed(0);
+            dom.sliderTh2.value = (0.25 * 180 / Math.PI).toFixed(0);
+            actualizarParametrosLabels();
+            reiniciarSimulacion();
         });
 
         dom.btnGemelosCaotico.addEventListener('click', function () {
-            if (window.PRESETS_PENDULO && window.PRESETS_PENDULO.caotico) {
-                var pCao = window.PRESETS_PENDULO.caotico;
-                dom.sliderTh1.value = (pCao.x0[0] * 180 / Math.PI).toFixed(0);
-                dom.sliderTh2.value = (pCao.x0[1] * 180 / Math.PI).toFixed(0);
-                dom.sliderW1.value = '0';
-                dom.sliderW2.value = '0';
-                inicializarSimulacion();
-            }
+            dom.sliderTh1.value = (2.6 * 180 / Math.PI).toFixed(0);
+            dom.sliderTh2.value = (2.6 * 180 / Math.PI).toFixed(0);
+            actualizarParametrosLabels();
+            reiniciarSimulacion();
         });
 
         // Monte Carlo: Controles
@@ -2097,9 +2210,8 @@
 
             dom.sliderTh1.value = (coords.th1 * 180 / Math.PI).toFixed(0);
             dom.sliderTh2.value = (coords.th2 * 180 / Math.PI).toFixed(0);
-            dom.sliderW1.value = '0';
-            dom.sliderW2.value = '0';
 
+            actualizarParametrosLabels();
             inicializarSimulacion();
         });
     }
@@ -2163,16 +2275,14 @@
                 var dy1 = pos.y - oy;
                 var newTh1 = Math.atan2(dx1, dy1);
                 dom.sliderTh1.value = (newTh1 * 180 / Math.PI).toFixed(0);
-                dom.sliderW1.value = '0';
-                dom.sliderW2.value = '0';
+                actualizarParametrosLabels();
                 inicializarSimulacion();
             } else if (estado.arrastre.masa === 2) {
                 var dx2 = pos.x - p1x;
                 var dy2 = pos.y - p1y;
                 var newTh2 = Math.atan2(dx2, dy2);
                 dom.sliderTh2.value = (newTh2 * 180 / Math.PI).toFixed(0);
-                dom.sliderW1.value = '0';
-                dom.sliderW2.value = '0';
+                actualizarParametrosLabels();
                 inicializarSimulacion();
             }
         }
@@ -2247,6 +2357,18 @@
 
         // Iniciar loop continuo
         requestAnimationFrame(bucleAnimacion);
+
+        // Exponer para verificación automatizada y pruebas
+        if (typeof window !== 'undefined') {
+            window.__simuladorApp = {
+                estado: estado,
+                dom: dom,
+                reiniciarSimulacion: reiniciarSimulacion,
+                inicializarSimulacion: inicializarSimulacion,
+                aplicarPreset: aplicarPreset,
+                cambiarPestaña: cambiarPestaña
+            };
+        }
     }
 
     if (document.readyState === 'loading') {

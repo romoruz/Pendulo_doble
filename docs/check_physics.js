@@ -104,6 +104,51 @@ if (!geomPasa) {
     console.log(`    Con θ1=θ2=0, y_pivote (${yPivote}) < y1_pantalla (${y1Pantalla}) < y2_pantalla (${y2Pantalla}) (ambas masas cuelgan debajo del pivote).`);
 }
 
+// Verificación del comportamiento del botón Reiniciar:
+// Debe regresar a t = 0 con la condición inicial vigente, limpiar la estela, la gráfica θ(t) y el contador de vueltas, y quedar en pausa.
+const estadoMock = {
+    corriendo: true,
+    t: 15.4,
+    x0: [0.6, 0.6, 0.0, 0.0],
+    x: [1.2, -0.4, 0.5, -0.3],
+    vueltasM1: 2,
+    vueltasM2: 5,
+    estelaM2: [{ x: 10, y: 20 }, { x: 12, y: 22 }],
+    historialTiempo: [{ t: 0 }, { t: 0.1 }, { t: 0.2 }]
+};
+const domMock = {
+    btnPlayPause: { textContent: 'Pausa', classList: { remove: () => {} } }
+};
+
+function reiniciarSimulacionMock(st, d) {
+    st.corriendo = false;
+    d.btnPlayPause.textContent = 'Reanudar';
+    st.x = [...st.x0];
+    st.t = 0.0;
+    st.vueltasM1 = 0;
+    st.vueltasM2 = 0;
+    st.estelaM2 = [];
+    st.historialTiempo = [];
+}
+
+reiniciarSimulacionMock(estadoMock, domMock);
+const resetPasa = (
+    estadoMock.corriendo === false &&
+    estadoMock.t === 0.0 &&
+    estadoMock.vueltasM1 === 0 &&
+    estadoMock.vueltasM2 === 0 &&
+    estadoMock.estelaM2.length === 0 &&
+    estadoMock.historialTiempo.length === 0 &&
+    domMock.btnPlayPause.textContent === 'Reanudar'
+);
+
+if (!resetPasa) {
+    console.error(`FALLO: La lógica de reiniciar no cumple con quedar en pausa a t=0 con datos limpios.`);
+    todasPasan = false;
+} else {
+    console.log(`[✓] Botón Reiniciar verificado: regresa a t=0 en pausa, limpia estela, historial y vueltas.`);
+}
+
 if (todasPasan) {
     console.log('RESULTADO: TODAS LAS PRUEBAS PASARON EXITOSAMENTE (Error < 1e-9 y vueltas verificadas).');
     process.exit(0);

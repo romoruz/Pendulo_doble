@@ -18,7 +18,7 @@
             <!-- Cuatro Pestañas Principales -->
             <nav class="mode-tabs-container" aria-label="Pestañas de visualización">
                 <button class="mode-tab-btn" data-tab="pendulo" id="tab-pendulo">Péndulo</button>
-                <button class="mode-tab-btn" data-tab="gemelos" id="tab-gemelos">Efecto mariposa</button>
+                <button class="mode-tab-btn" data-tab="gemelos" id="tab-gemelos">Sensibilidad</button>
                 <button class="mode-tab-btn" data-tab="montecarlo" id="tab-montecarlo">Muchos péndulos (Monte Carlo)</button>
                 <button class="mode-tab-btn" data-tab="mapacaos" id="tab-mapacaos">Mapa de caos</button>
             </nav>
@@ -68,14 +68,9 @@
                     <span class="sidebar-section-title">Presets Teóricos</span>
                     <div class="presets-2col-grid">
                         <button class="btn-preset" data-preset="pequenas_oscilaciones">Pequeñas osc.</button>
-                        <button class="btn-preset" data-preset="cuasi_periodico">Cuasi-periódico</button>
+                        <button class="btn-preset" data-preset="modo_normal_en_fase">Modo normal</button>
                         <button class="btn-preset" data-preset="caotico">Caótico</button>
-                        <button class="btn-preset" data-preset="baja_energia">Baja energía</button>
-                        <button class="btn-preset" data-preset="alta_energia">Alta energía</button>
-                        <button class="btn-preset" data-preset="modo_1">Modo 1 (Fase)</button>
-                        <button class="btn-preset" data-preset="modo_2">Modo 2 (Contra)</button>
-                        <button class="btn-preset" data-preset="caso_1_informe">Caso 1 Inf.</button>
-                        <button class="btn-preset" data-preset="caso_2_informe">Caso 2 Inf.</button>
+                        <button class="btn-preset" data-preset="casi_invertido">Casi invertido</button>
                     </div>
                 </div>
 
@@ -95,20 +90,6 @@
                             <span id="lbl-th2" class="slider-val">45°</span>
                         </div>
                         <input type="range" id="slider-th2" class="slider-input" min="-180" max="180" step="1" value="45">
-                    </div>
-                    <div class="slider-group">
-                        <div class="slider-label-row">
-                            <span>Velocidad ω₁(0):</span>
-                            <span id="lbl-w1" class="slider-val">0.0 rad/s</span>
-                        </div>
-                        <input type="range" id="slider-w1" class="slider-input" min="-10" max="10" step="0.1" value="0.0">
-                    </div>
-                    <div class="slider-group">
-                        <div class="slider-label-row">
-                            <span>Velocidad ω₂(0):</span>
-                            <span id="lbl-w2" class="slider-val">0.0 rad/s</span>
-                        </div>
-                        <input type="range" id="slider-w2" class="slider-input" min="-10" max="10" step="0.1" value="0.0">
                     </div>
                 </div>
 
@@ -176,9 +157,9 @@
                         <button id="btn-toggle-phase-chart" class="btn-sidebar" style="margin-top: 8px; width: 100%;">Ver espacio fase (θ, ω)</button>
                     </div>
 
-                    <!-- Controles para Efecto Mariposa -->
+                    <!-- Controles para Sensibilidad -->
                     <div id="controls-tab-gemelos" style="display: none;">
-                        <span class="sidebar-section-title">Efecto Mariposa</span>
+                        <span class="sidebar-section-title">Sensibilidad a condiciones iniciales</span>
                         <div class="slider-group">
                             <div class="slider-label-row">
                                 <span>Separación δ:</span>
@@ -205,7 +186,7 @@
                         <div class="slider-group">
                             <div class="slider-label-row">
                                 <span>Ruido σ:</span>
-                                <span id="lbl-mc-sigma" class="slider-val">0.010 rad</span>
+                                <span id="lbl-mc-sigma" class="slider-val">0.57°</span>
                             </div>
                             <input type="range" id="slider-mc-sigma" class="slider-input" min="0.001" max="0.050" step="0.001" value="0.010">
                         </div>
@@ -355,7 +336,7 @@
                         <!-- Columna Izquierda: Péndulos Superpuestos -->
                         <div class="gemelos-stage-col">
                             <div class="stage-header-title">
-                                <span>Diferencia inicial: 0.001 rad (≈ 1 mm en la punta)</span>
+                                <span>Sensibilidad a condiciones iniciales (δ = 0.001 rad ≈ 1 mm en la punta)</span>
                                 <span id="gemelos-status-badge" class="badge-status">Iniciando...</span>
                             </div>
                             <div class="gemelos-canvas-wrapper">
@@ -363,7 +344,7 @@
                             </div>
                         </div>
 
-                        <!-- Columna Derecha (~45%): Gráfica de Separación log10(d) vs t -->
+                        <!-- Columna Derecha (~40%): Gráfica de Separación log10(d) vs t -->
                         <div class="gemelos-chart-col">
                             <div class="single-chart-card">
                                 <div class="chart-header-row">
@@ -388,7 +369,7 @@
                 <div id="view-montecarlo" class="tab-view" style="display: none;">
                     <div class="montecarlo-layout">
                         <div class="mc-banner-legend">
-                            Misma incertidumbre inicial en ambos (σ = 0.01 rad). En baja energía todos se comportan igual; en alta energía la incertidumbre explota.
+                            Cada péndulo empieza en el ángulo nominal más un error normal de σ = 0.57°, como un error de medición
                         </div>
 
                         <!-- Dos Paneles Lado a Lado Siempre -->

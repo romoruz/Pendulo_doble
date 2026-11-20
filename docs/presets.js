@@ -78,9 +78,9 @@
       0.0
     ]
   },
-  "cuasi_periodico": {
-    "nombre": "Cuasi-periódico",
-    "descripcion": "Trayectoria regular en toro invariante (0.80, 0.60)",
+  "modo_normal_en_fase": {
+    "nombre": "Modo normal en fase",
+    "descripcion": "Oscilación armónica simétrica (θ₁ = 0.10, θ₂ = √2·θ₁)",
     "params": {
       "m1": 1.0,
       "m2": 1.0,
@@ -89,14 +89,31 @@
       "g": 9.81
     },
     "x0": [
-      0.8,
-      0.6,
+      0.1,
+      0.1414213562373095,
       0.0,
       0.0
     ]
   },
   "caotico": {
     "nombre": "Caótico",
+    "descripcion": "Régimen caótico de alta energía (2.60, 2.60)",
+    "params": {
+      "m1": 1.0,
+      "m2": 1.0,
+      "l1": 1.0,
+      "l2": 1.0,
+      "g": 9.81
+    },
+    "x0": [
+      2.6,
+      2.6,
+      0.0,
+      0.0
+    ]
+  },
+  "casi_invertido": {
+    "nombre": "Casi invertido",
     "descripcion": "Alta sensibilidad cerca de la cima invertida (π-0.05, π-0.05)",
     "params": {
       "m1": 1.0,
